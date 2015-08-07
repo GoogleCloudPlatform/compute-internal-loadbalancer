@@ -74,9 +74,56 @@ resources:
             sudo mv consul /usr/local/bin
             sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
 
+            # Register service
             sudo mkdir /etc/consul.d
             echo '{"service": {"name": "haproxy-internal", "port": 80}}'  | sudo tee /etc/consul.d/www-internal.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
+
+            # Create haproxy template
+            cat <<EOF >  /etc/haproxy/haproxy.ctmpl
+            global
+                    log /dev/log    local0
+                    log /dev/log    local1 notice
+                    chroot /var/lib/haproxy
+                    stats socket /run/haproxy/admin.sock mode 660 level admin
+                    stats timeout 30s
+                    user haproxy
+                    group haproxy
+                    daemon
+                    # Default SSL material locations
+                    ca-base /etc/ssl/certs
+                    crt-base /etc/ssl/private
+                    # Default ciphers to use on SSL-enabled listening sockets.
+                    # For more information, see ciphers(1SSL). This list is from:
+                    #  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
+                    ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+                    ssl-default-bind-options no-sslv3
+            defaults
+                    log     global
+                    mode    http
+                    option  httplog
+                    option  dontlognull
+                    timeout connect 5000
+                    timeout client  50000
+                    timeout server  50000
+                    errorfile 400 /etc/haproxy/errors/400.http
+                    errorfile 403 /etc/haproxy/errors/403.http
+                    errorfile 408 /etc/haproxy/errors/408.http
+                    errorfile 500 /etc/haproxy/errors/500.http
+                    errorfile 502 /etc/haproxy/errors/502.http
+                    errorfile 503 /etc/haproxy/errors/503.http
+                    errorfile 504 /etc/haproxy/errors/504.http
+            listen http-in
+                    bind *:80[[range service "www-internal"]]
+                    server [[.Node]] [[.Address]]:[[.Port]][[end]]  
+            EOF
+
+            # Hack to replace brackets with brace
+            sed -i "s.].}.g" /etc/haproxy/haproxy.ctmpl
+            sed -i "s.\[.{.g" /etc/haproxy/haproxy.ctmpl
+
+            # Generate haproxy config
+            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s &
 
             # Remove public IP
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
@@ -121,11 +168,71 @@ resources:
             sudo mv consul /usr/local/bin
             sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
 
+            # Register service
             sudo mkdir /etc/consul.d
-            echo '{"service": {"name": "www-backend", "port": 80}}'  | sudo tee /etc/consul.d/www-backend.json
+            echo '{"service": {"name": "www-internal", "port": 80}}'  | sudo tee /etc/consul.d/www-backend.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
+            
+            # Custom web page
+            cat <<EOF > /var/www/html/index.nginx-debian.html
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <title>Internal</title>
+            <style>
+                body {
+                    width: 35em;
+                    margin: 0 auto;
+                    font-family: Tahoma, Verdana, Arial, sans-serif;
+                }
+            </style>
+            </head>
+            <body>
+            <h1>$HOSTNAME in $(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone")</h1>
+            <p>If you see this page, the nginx web server is successfully installed and
+            working on Debian. Further configuration is required.</p>
+            </body>
+            </html>
+            EOF
+
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
+# Bastion
+- name: {{ "bastion-" + env["deployment"] }}
+  type: compute.v1.instance
+  properties:
+    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ properties["bastion_zone"] }}/machineTypes/{{ properties["machine_type"]["consul"] }}
+    zone: {{ properties["bastion_zone"]}}
+    disks:
+    - deviceName: boot
+      type: PERSISTENT
+      boot: true
+      autoDelete: true
+      initializeParams:
+        sourceImage: {{ properties["image"] }}
+    networkInterfaces:
+    - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+      accessConfigs:
+      - name: External NAT
+        type: ONE_TO_ONE_NAT
+    tags:
+      items:
+      - bastion
+    metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            sudo apt-get install -y unzip jq
+
+            # Get and install consul
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            unzip 0.5.2_linux_amd64.zip
+            sudo mv consul /usr/local/bin
+
+            # Start consul
+            consul agent -data-dir /tmp/consul {{ CONSUL_ARGS_STRING}} &
+           
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers
 - name: {{ WWW_INSTANCE_GROUP + "-" + zone }}
@@ -188,12 +295,15 @@ resources:
         value: |
           #! /bin/bash
           sudo apt-get install -y unzip
+
+          # Install consul
           wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-          wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
-          tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
           unzip 0.5.2_linux_amd64.zip
           sudo mv consul /usr/local/bin
+
+          # Run consul
           consul agent -server -data-dir /tmp/consul {{ CONSUL_ARGS_STRING + " -bootstrap-expect " + properties["zones"]|length|string }} &
+
           gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
 {% endfor %}

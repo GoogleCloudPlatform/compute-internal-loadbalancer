@@ -25,7 +25,7 @@ resources:
         consul: f1-micro
         haproxy: n1-standard-1
         www: n1-standard-1
-      region: us-central1
+      bastion_zone: us-central1-a
       zones: 
         us-central1-a: 
           desired_web_servers: 2
