@@ -1,0 +1,199 @@
+# Copyright 2014 Google Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{% set WWW = "www-internal-" + env["deployment"] %}
+{% set WWW_INSTANCE_TEMPLATE = "instance-template-" + WWW %}
+{% set WWW_INSTANCE_GROUP =  "instance-group-" + WWW %}
+
+{% set HAPROXY = "haproxy-" + env["deployment"] %}
+{% set HAPROXY_INSTANCE_TEMPLATE = "instance-template-" + HAPROXY  %}
+{% set HAPROXY_INSTANCE_GROUP =  "instance-group-" + HAPROXY %}
+
+{% set CONSUL = "consul-" + env["deployment"] %}
+
+# Construct args for consul agent to join cluster
+{% set CONSUL_ARGS_LIST = [] %}
+{% set _ = CONSUL_ARGS_LIST.append("-retry-max 10") %}
+{% set _ = CONSUL_ARGS_LIST.append("-retry-interval 30s") %}
+{% for zone in properties["zones"] %}
+{% set _ = CONSUL_ARGS_LIST.append("-retry-join " + CONSUL + "-" + zone) %}
+{% endfor %}
+{% set CONSUL_ARGS_STRING = CONSUL_ARGS_LIST|join(' ') %}
+
+{% set AUTOSCALER = "autoscaler-" + env["deployment"] %}
+
+resources:
+- name: {{ HAPROXY_INSTANCE_TEMPLATE }}
+  type: compute.v1.instanceTemplate
+  properties:
+    project: {{ env["project"] }}
+    properties:
+      machineType: {{ properties["machine_type"]["haproxy"] }}
+      disks:
+      - deviceName: boot
+        type: PERSISTENT
+        boot: true
+        autoDelete: true
+        initializeParams:
+          sourceImage: {{ properties["image"] }}
+      networkInterfaces:
+      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+        accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+      serviceAccounts: 
+      - email: "default"
+        scopes: 
+        - "https://www.googleapis.com/auth/compute"
+      tags:
+        items:
+        - haproxy
+      metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            sudo apt-get install -y unzip haproxy
+
+            # Get and install consul and consul-template
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
+            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
+            unzip 0.5.2_linux_amd64.zip
+            sudo mv consul /usr/local/bin
+            sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
+
+            sudo mkdir /etc/consul.d
+            echo '{"service": {"name": "haproxy-internal", "port": 80}}'  | sudo tee /etc/consul.d/www-internal.json
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
+
+            # Remove public IP
+            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+
+- name: {{ WWW_INSTANCE_TEMPLATE }}
+  type: compute.v1.instanceTemplate
+  properties:
+    project: {{ env["project"] }}
+    properties:
+      machineType: {{ properties["machine_type"]["www"] }}
+      disks:
+      - deviceName: boot
+        type: PERSISTENT
+        boot: true
+        autoDelete: true
+        initializeParams:
+          sourceImage: {{ properties["image"] }}
+      networkInterfaces:
+      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+        accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+      serviceAccounts: 
+      - email: "default"
+        scopes: 
+        - "https://www.googleapis.com/auth/compute"
+      tags:
+        items:
+        - www
+      metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            sudo apt-get install -y unzip nginx
+
+            # Get and install consul and consul-template
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
+            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
+            unzip 0.5.2_linux_amd64.zip
+            sudo mv consul /usr/local/bin
+            sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
+
+            sudo mkdir /etc/consul.d
+            echo '{"service": {"name": "www-backend", "port": 80}}'  | sudo tee /etc/consul.d/www-backend.json
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
+            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+
+{% for zone in properties["zones"] %}
+# Instance Group Manager for web servers
+- name: {{ WWW_INSTANCE_GROUP + "-" + zone }}
+  type: replicapool.v1beta2.instanceGroupManager
+  properties:
+    zone: {{ zone }}
+    size: {{ properties["zones"][zone]["desired_web_servers"] }}
+    baseInstanceName: {{ WWW }}
+    instanceTemplate: $(ref.{{ WWW_INSTANCE_TEMPLATE }}.selfLink)
+
+# Autoscaler
+- name: {{ AUTOSCALER + "-" + zone}}
+  type: autoscaler.v1beta2.autoscaler
+  properties:
+    zone: {{ zone }}
+    target: $(ref.{{ WWW_INSTANCE_GROUP + "-" + zone }}.selfLink)
+    autoscalingPolicy:
+      maxNumReplicas: {{ properties["zones"][zone]["max_web_servers"] }}
+      minNumReplicas: {{ properties["zones"][zone]["min_web_servers"] }}
+      loadBalancingUtilization:
+        utilizationTarget: .8
+
+# Instance Group Manager for internal HAProxy
+- name: {{ HAPROXY_INSTANCE_GROUP + "-" + zone }}
+  type: replicapool.v1beta2.instanceGroupManager
+  properties:
+    zone: {{ zone }}
+    size: {{ properties["zones"][zone]["haproxy_servers"] }}
+    baseInstanceName: {{ HAPROXY }}
+    instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
+
+# Consul
+- name: {{ CONSUL + "-" + zone }}
+  type: compute.v1.instance
+  properties:
+    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ zone }}/machineTypes/{{ properties["machine_type"]["consul"] }}
+    zone: {{ zone }}
+    disks:
+    - deviceName: boot
+      type: PERSISTENT
+      boot: true
+      autoDelete: true
+      initializeParams:
+        sourceImage: {{ properties["image"] }}
+    networkInterfaces:
+    - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+      accessConfigs:
+      - name: External NAT
+        type: ONE_TO_ONE_NAT
+    serviceAccounts: 
+    - email: "default"
+      scopes: 
+      - "https://www.googleapis.com/auth/compute"
+    tags:
+      items:
+      - consul
+    metadata:
+      items:
+      - key: startup-script
+        value: |
+          #! /bin/bash
+          sudo apt-get install -y unzip
+          wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+          wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
+          tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
+          unzip 0.5.2_linux_amd64.zip
+          sudo mv consul /usr/local/bin
+          consul agent -server -data-dir /tmp/consul {{ CONSUL_ARGS_STRING + " -bootstrap-expect " + properties["zones"]|length|string }} &
+          gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+
+{% endfor %}

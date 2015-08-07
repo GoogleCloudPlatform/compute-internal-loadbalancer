@@ -1,0 +1,44 @@
+# Copyright 2014 Google Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+--- 
+imports: 
+  - 
+    path: instances.jinja
+resources: 
+  - 
+    name: internal
+    type: instances.jinja
+    properties: 
+      image: "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150710"
+      machine_type: 
+        consul: f1-micro
+        haproxy: n1-standard-1
+        www: n1-standard-1
+      region: us-central1
+      zones: 
+        us-central1-a: 
+          desired_web_servers: 2
+          max_web_servers: 8
+          min_web_servers: 2
+          haproxy_servers: 1
+        us-central1-b: 
+          desired_web_servers: 2
+          max_web_servers: 8
+          min_web_servers: 2
+          haproxy_servers: 1
+        us-central1-f: 
+          desired_web_servers: 4
+          max_web_servers: 8
+          min_web_servers: 2
+          haproxy_servers: 1
