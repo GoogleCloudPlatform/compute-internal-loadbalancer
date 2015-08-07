@@ -1,0 +1,44 @@
+resources:
+{% for zone in properties["zones"] %}
+# Consul
+- name: {{ env["name"] + "-" + zone }}
+  type: compute.v1.instance
+  properties:
+    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ zone }}/machineTypes/{{ properties["machine_type"] }}
+    zone: {{ zone }}
+    disks:
+    - deviceName: boot
+      type: PERSISTENT
+      boot: true
+      autoDelete: true
+      initializeParams:
+        sourceImage: {{ properties["image"] }}
+    networkInterfaces:
+    - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+      accessConfigs:
+      - name: External NAT
+        type: ONE_TO_ONE_NAT
+    serviceAccounts: 
+    - email: "default"
+      scopes: 
+      - "https://www.googleapis.com/auth/compute"
+    tags:
+      items:
+      - consul
+    metadata:
+      items:
+      - key: startup-script
+        value: |
+          #! /bin/bash
+          sudo apt-get install -y unzip
+
+          # Install consul
+          wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+          unzip 0.5.2_linux_amd64.zip
+          sudo mv consul /usr/local/bin
+
+          # Run consul
+          consul agent -server -data-dir /tmp/consul {{ properties["consul_args"] + " -bootstrap-expect " + properties["zones"]|length|string }} &
+
+          gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+{% endfor %}

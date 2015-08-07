@@ -13,19 +13,20 @@
 # limitations under the License.
 --- 
 imports: 
-  - 
-    path: instances.jinja
+  - path: config.jinja
+  - path: consul.jinja
 resources: 
   - 
     name: internal
-    type: instances.jinja
+    type: config.jinja
     properties: 
       image: "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150710"
+      backend_app_bin: "https://storage.googleapis.com/evandbrown17/gceme"
       machine_type: 
         consul: f1-micro
         haproxy: n1-standard-1
         www: n1-standard-1
-      bastion_zone: us-central1-a
+      client_zone: us-central1-a
       zones: 
         us-central1-a: 
           desired_web_servers: 2

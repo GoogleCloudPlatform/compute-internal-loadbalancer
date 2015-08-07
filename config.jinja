@@ -20,8 +20,9 @@
 {% set HAPROXY_INSTANCE_TEMPLATE = "instance-template-" + HAPROXY  %}
 {% set HAPROXY_INSTANCE_GROUP =  "instance-group-" + HAPROXY %}
 
-{% set CONSUL = "consul-" + env["deployment"] %}
+{% set AUTOSCALER = "autoscaler-" + env["deployment"] %}
 
+{% set CONSUL = "consul-" + env["deployment"] %}
 # Construct args for consul agent to join cluster
 {% set CONSUL_ARGS_LIST = [] %}
 {% set _ = CONSUL_ARGS_LIST.append("-retry-max 10") %}
@@ -31,9 +32,14 @@
 {% endfor %}
 {% set CONSUL_ARGS_STRING = CONSUL_ARGS_LIST|join(' ') %}
 
-{% set AUTOSCALER = "autoscaler-" + env["deployment"] %}
-
 resources:
+- name: {{ CONSUL }}
+  type: consul.jinja
+  properties:
+    machine_type: {{ properties["machine_type"]["consul"] }}
+    image: {{ properties["image"] }}
+    consul_args: {{ CONSUL_ARGS_STRING }}
+    zones: {{ properties["zones"] }}
 - name: {{ HAPROXY_INSTANCE_TEMPLATE }}
   type: compute.v1.instanceTemplate
   properties:
@@ -158,51 +164,31 @@ resources:
         - key: startup-script
           value: |
             #! /bin/bash
-            sudo apt-get install -y unzip nginx
+            sudo apt-get install -y unzip
 
             # Get and install consul and consul-template
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
-            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
             unzip 0.5.2_linux_amd64.zip
             sudo mv consul /usr/local/bin
-            sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
 
             # Register service
-            sudo mkdir /etc/consul.d
-            echo '{"service": {"name": "www-internal", "port": 80}}'  | sudo tee /etc/consul.d/www-backend.json
+            mkdir /etc/consul.d
+            echo '{"service": {"name": "www-internal", "port": 8080}}' > /etc/consul.d/www-backend.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
-            
-            # Custom web page
-            cat <<EOF > /var/www/html/index.nginx-debian.html
-            <!DOCTYPE html>
-            <html>
-            <head>
-            <title>Internal</title>
-            <style>
-                body {
-                    width: 35em;
-                    margin: 0 auto;
-                    font-family: Tahoma, Verdana, Arial, sans-serif;
-                }
-            </style>
-            </head>
-            <body>
-            <h1>$HOSTNAME in $(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone")</h1>
-            <p>If you see this page, the nginx web server is successfully installed and
-            working on Debian. Further configuration is required.</p>
-            </body>
-            </html>
-            EOF
+
+            # Get and run simple api web app called 'gceme'
+            wget {{ properties["backend_app_bin"] }}
+            chmod +x ./gceme
+            ./gceme &
 
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
-# Bastion
-- name: {{ "bastion-" + env["deployment"] }}
+# Client
+- name: {{ "client-" + env["deployment"] }}
   type: compute.v1.instance
   properties:
-    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ properties["bastion_zone"] }}/machineTypes/{{ properties["machine_type"]["consul"] }}
-    zone: {{ properties["bastion_zone"]}}
+    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ properties["client_zone"] }}/machineTypes/{{ properties["machine_type"]["consul"] }}
+    zone: {{ properties["client_zone"]}}
     disks:
     - deviceName: boot
       type: PERSISTENT
@@ -217,7 +203,7 @@ resources:
         type: ONE_TO_ONE_NAT
     tags:
       items:
-      - bastion
+      - client
     metadata:
         items:
         - key: startup-script
@@ -229,9 +215,14 @@ resources:
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
             unzip 0.5.2_linux_amd64.zip
             sudo mv consul /usr/local/bin
+            
+            # Configure consul to run DNS on port 53; update resolv.conf
+            mkdir /etc/consul.d
+            echo '{ "ports": { "dns": 53 }, "recursors": ["169.254.169.254"] }' > /etc/consul.d/dns-config.json
+            sed -i "s/nameserver 169.254.169.254/nameserver 127.0.0.1\nnameserver 169.254.169.254/g" /etc/resolv.conf
 
             # Start consul
-            consul agent -data-dir /tmp/consul {{ CONSUL_ARGS_STRING}} &
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
            
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers
@@ -263,47 +254,5 @@ resources:
     size: {{ properties["zones"][zone]["haproxy_servers"] }}
     baseInstanceName: {{ HAPROXY }}
     instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
-
-# Consul
-- name: {{ CONSUL + "-" + zone }}
-  type: compute.v1.instance
-  properties:
-    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ zone }}/machineTypes/{{ properties["machine_type"]["consul"] }}
-    zone: {{ zone }}
-    disks:
-    - deviceName: boot
-      type: PERSISTENT
-      boot: true
-      autoDelete: true
-      initializeParams:
-        sourceImage: {{ properties["image"] }}
-    networkInterfaces:
-    - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-      accessConfigs:
-      - name: External NAT
-        type: ONE_TO_ONE_NAT
-    serviceAccounts: 
-    - email: "default"
-      scopes: 
-      - "https://www.googleapis.com/auth/compute"
-    tags:
-      items:
-      - consul
-    metadata:
-      items:
-      - key: startup-script
-        value: |
-          #! /bin/bash
-          sudo apt-get install -y unzip
-
-          # Install consul
-          wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-          unzip 0.5.2_linux_amd64.zip
-          sudo mv consul /usr/local/bin
-
-          # Run consul
-          consul agent -server -data-dir /tmp/consul {{ CONSUL_ARGS_STRING + " -bootstrap-expect " + properties["zones"]|length|string }} &
-
-          gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
 {% endfor %}
