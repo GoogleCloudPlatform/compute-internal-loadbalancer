@@ -227,16 +227,16 @@ resources:
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers
 - name: {{ WWW_INSTANCE_GROUP + "-" + zone }}
-  type: replicapool.v1beta2.instanceGroupManager
+  type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    size: {{ properties["zones"][zone]["desired_web_servers"] }}
+    targetSize: {{ properties["zones"][zone]["desired_web_servers"] }}
     baseInstanceName: {{ WWW }}
     instanceTemplate: $(ref.{{ WWW_INSTANCE_TEMPLATE }}.selfLink)
 
 # Autoscaler
 - name: {{ AUTOSCALER + "-" + zone}}
-  type: autoscaler.v1beta2.autoscaler
+  type: compute.v1.autoscaler
   properties:
     zone: {{ zone }}
     target: $(ref.{{ WWW_INSTANCE_GROUP + "-" + zone }}.selfLink)
@@ -248,10 +248,10 @@ resources:
 
 # Instance Group Manager for internal HAProxy
 - name: {{ HAPROXY_INSTANCE_GROUP + "-" + zone }}
-  type: replicapool.v1beta2.instanceGroupManager
+  type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    size: {{ properties["zones"][zone]["haproxy_servers"] }}
+    targetSize: {{ properties["zones"][zone]["haproxy_servers"] }}
     baseInstanceName: {{ HAPROXY }}
     instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
 
