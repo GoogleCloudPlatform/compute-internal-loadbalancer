@@ -15,31 +15,39 @@
 imports: 
   - path: config.jinja
   - path: consul.jinja
+  - path: haproxy.jinja
+  - path: api-internal.jinja
+  - path: www-frontend.jinja
 resources: 
   - 
     name: internal
     type: config.jinja
     properties: 
       image: "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150710"
+      region: us-central1
       backend_app_bin: "https://storage.googleapis.com/evandbrown17/gceme"
       machine_type: 
         consul: f1-micro
         haproxy: n1-standard-1
+        api: n1-standard-1
         www: n1-standard-1
       client_zone: us-central1-a
       zones: 
         us-central1-a: 
-          desired_web_servers: 5
-          max_web_servers: 60
-          min_web_servers: 1
+          desired_api_servers: 5
+          max_api_servers: 60
+          min_api_servers: 1
           haproxy_servers: 1
+          www_servers: 1
         us-central1-b: 
-          desired_web_servers: 5
-          max_web_servers: 60
-          min_web_servers: 1
+          desired_api_servers: 5
+          max_api_servers: 60
+          min_api_servers: 1
           haproxy_servers: 1
+          www_servers: 1
         us-central1-f: 
-          desired_web_servers: 5
-          max_web_servers: 60
-          min_web_servers: 1
+          desired_api_servers: 5
+          max_api_servers: 60
+          min_api_servers: 1
           haproxy_servers: 1
+          www_servers: 1

@@ -1,0 +1,87 @@
+# Copyright 2015 Google Inc. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{% set FRONTEND = env["name"] %}
+{% set FRONTEND_INSTANCE_GROUP = "instance-group-" + FRONTEND %}
+{% set FRONTEND_INSTANCE_TEMPLATE = "instance-template-" + FRONTEND %}
+
+{% set HEALTHCHECK = FRONTEND + "-healthcheck" %}
+{% set FORWARDING_RULE = FRONTEND + "-forwardingrule" %}
+{% set BACKEND_SERVICE = FRONTEND + "-backendservice" %}
+{% set URL_MAP = FRONTEND + "-urlmap" %}
+{% set TARGET_HTTP_PROXY = FRONTEND + "-targethttpproxy" %}
+
+resources:
+- name: {{ FRONTEND_INSTANCE_TEMPLATE }}
+  type: compute.v1.instanceTemplate
+  properties:
+    project: {{ env["project"] }}
+    properties:
+      machineType: {{ properties["machine_type"] }}
+      disks:
+      - deviceName: boot
+        type: PERSISTENT
+        boot: true
+        autoDelete: true
+        initializeParams:
+          sourceImage: {{ properties["image"] }}
+      networkInterfaces:
+      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+        accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+      serviceAccounts: 
+      - email: "default"
+        scopes: 
+        - "https://www.googleapis.com/auth/compute"
+      tags:
+        items:
+        - http-server 
+      metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            apt-get install -y unzip jq
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
+
+            # Get and install consul
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            unzip 0.5.2_linux_amd64.zip
+            mv consul /usr/local/bin
+            
+            # Configure consul to run DNS on port 53; update resolv.conf
+            mkdir /etc/consul.d
+            echo '{ "ports": { "dns": 53 }, "recursors": ["169.254.169.254"] }' > /etc/consul.d/dns-config.json
+            sed -i "s/nameserver 169.254.169.254/nameserver 127.0.0.1\nnameserver 169.254.169.254/g" /etc/resolv.conf
+
+            # Start consul
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
+            
+            # Get and run simple api web app called 'gceme'
+            wget {{ properties["backend_app_bin"] }}
+            chmod +x ./gceme
+            ./gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080 &
+ 
+{% for zone in properties["zones"] %}
+# Instance Group Manager for internal HAProxy
+- name: {{ FRONTEND_INSTANCE_GROUP + "-" + zone }}
+  type: compute.v1.instanceGroupManager
+  properties:
+    zone: {{ zone }}
+    targetSize: {{ properties["zones"][zone]["www_servers"] }}
+    baseInstanceName: {{ env["name"] }}
+    instanceTemplate: $(ref.{{ FRONTEND_INSTANCE_TEMPLATE }}.selfLink)
+{% endfor %}

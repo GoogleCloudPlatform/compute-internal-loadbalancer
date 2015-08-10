@@ -12,17 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{% set WWW = "www-internal-" + env["deployment"] %}
-{% set WWW_INSTANCE_TEMPLATE = "instance-template-" + WWW %}
-{% set WWW_INSTANCE_GROUP =  "instance-group-" + WWW %}
-
+{% set API = "api-internal-" + env["deployment"] %}
 {% set HAPROXY = "haproxy-" + env["deployment"] %}
-{% set HAPROXY_INSTANCE_TEMPLATE = "instance-template-" + HAPROXY  %}
-{% set HAPROXY_INSTANCE_GROUP =  "instance-group-" + HAPROXY %}
-
-{% set AUTOSCALER = "autoscaler-" + env["deployment"] %}
-
 {% set CONSUL = "consul-" + env["deployment"] %}
+{% set WWW = "www-" + env["deployment"] %}
+
 # Construct args for consul agent to join cluster
 {% set CONSUL_ARGS_LIST = [] %}
 {% set _ = CONSUL_ARGS_LIST.append("-retry-max 10") %}
@@ -41,230 +35,29 @@ resources:
     consul_args: {{ CONSUL_ARGS_STRING }}
     zones: {{ properties["zones"] }}
 
-- name: {{ HAPROXY_INSTANCE_TEMPLATE }}
-  type: compute.v1.instanceTemplate
+- name: {{ HAPROXY }}
+  type: haproxy.jinja
   properties:
-    project: {{ env["project"] }}
-    properties:
-      machineType: {{ properties["machine_type"]["haproxy"] }}
-      disks:
-      - deviceName: boot
-        type: PERSISTENT
-        boot: true
-        autoDelete: true
-        initializeParams:
-          sourceImage: {{ properties["image"] }}
-      networkInterfaces:
-      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-        accessConfigs:
-        - name: External NAT
-          type: ONE_TO_ONE_NAT
-      serviceAccounts: 
-      - email: "default"
-        scopes: 
-        - "https://www.googleapis.com/auth/compute"
-      tags:
-        items:
-        - haproxy
-      metadata:
-        items:
-        - key: startup-script
-          value: |
-            #! /bin/bash
-            apt-get install -y unzip haproxy
+    machine_type: {{ properties["machine_type"]["haproxy"] }}
+    image: {{ properties["image"] }}
+    consul_args: {{ CONSUL_ARGS_STRING }}
+    zones: {{ properties["zones"] }}
 
-            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
-
-            # Get and install consul and consul-template
-            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
-            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
-            unzip 0.5.2_linux_amd64.zip
-            mv consul /usr/local/bin
-            mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
-
-            # Register service
-            mkdir /etc/consul.d
-            echo "{\"service\": {\"name\": \"haproxy-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/haproxy-internal.json
-            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
-
-            # Create haproxy template
-            cat <<EOF >  /etc/haproxy/haproxy.ctmpl
-            global
-                    log /dev/log    local0
-                    log /dev/log    local1 notice
-                    chroot /var/lib/haproxy
-                    stats socket /run/haproxy/admin.sock mode 660 level admin
-                    stats timeout 30s
-                    user haproxy
-                    group haproxy
-                    daemon
-                    # Default SSL material locations
-                    ca-base /etc/ssl/certs
-                    crt-base /etc/ssl/private
-                    # Default ciphers to use on SSL-enabled listening sockets.
-                    # For more information, see ciphers(1SSL). This list is from:
-                    #  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
-                    ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
-                    ssl-default-bind-options no-sslv3
-            defaults
-                    log     global
-                    mode    http
-                    option  httplog
-                    option  dontlognull
-                    timeout connect 5000
-                    timeout client  50000
-                    timeout server  50000
-                    errorfile 400 /etc/haproxy/errors/400.http
-                    errorfile 403 /etc/haproxy/errors/403.http
-                    errorfile 408 /etc/haproxy/errors/408.http
-                    errorfile 500 /etc/haproxy/errors/500.http
-                    errorfile 502 /etc/haproxy/errors/502.http
-                    errorfile 503 /etc/haproxy/errors/503.http
-                    errorfile 504 /etc/haproxy/errors/504.http
-            listen http-in
-                    bind *:8080[[range service "$zone.www-internal"]]
-                    server [[.Node]] [[.Address]]:[[.Port]][[end]]  
-            EOF
-
-            # Hack to replace brackets with brace
-            sed -i "s.].}.g" /etc/haproxy/haproxy.ctmpl
-            sed -i "s.\[.{.g" /etc/haproxy/haproxy.ctmpl
-
-            # Generate haproxy config
-            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s &
-
-            # Remove public IP
-            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
-
-- name: {{ WWW_INSTANCE_TEMPLATE }}
-  type: compute.v1.instanceTemplate
+- name: {{ API }}
+  type: api-internal.jinja
   properties:
-    project: {{ env["project"] }}
-    properties:
-      machineType: {{ properties["machine_type"]["www"] }}
-      disks:
-      - deviceName: boot
-        type: PERSISTENT
-        boot: true
-        autoDelete: true
-        initializeParams:
-          sourceImage: {{ properties["image"] }}
-      networkInterfaces:
-      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-        accessConfigs:
-        - name: External NAT
-          type: ONE_TO_ONE_NAT
-      serviceAccounts: 
-      - email: "default"
-        scopes: 
-        - "https://www.googleapis.com/auth/compute"
-      tags:
-        items:
-        - www
-      metadata:
-        items:
-        - key: startup-script
-          value: |
-            #! /bin/bash
-            apt-get install -y unzip
+    machine_type: {{ properties["machine_type"]["api"] }}
+    image: {{ properties["image"] }}
+    consul_args: {{ CONSUL_ARGS_STRING }}
+    zones: {{ properties["zones"] }}
+    backend_app_bin: {{ properties["backend_app_bin"] }}
 
-            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
-
-            # Get and install consul and consul-template
-            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-            unzip 0.5.2_linux_amd64.zip
-            mv consul /usr/local/bin
-
-            # Register service
-            mkdir /etc/consul.d
-            echo "{\"service\": {\"name\": \"www-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/www-internal.json
-            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
-
-            # Get and run simple api web app called 'gceme'
-            wget {{ properties["backend_app_bin"] }}
-            chmod +x ./gceme
-            ./gceme -port=8080 &
-
-            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
-
-# Public HTTP server
-- name: {{ "public-http-" + env["deployment"] }}
-  type: compute.v1.instance
+- name: {{ WWW }}
+  type: www-frontend.jinja
   properties:
-    machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ properties["client_zone"] }}/machineTypes/{{ properties["machine_type"]["consul"] }}
-    zone: {{ properties["client_zone"]}}
-    disks:
-    - deviceName: boot
-      type: PERSISTENT
-      boot: true
-      autoDelete: true
-      initializeParams:
-        sourceImage: {{ properties["image"] }}
-    networkInterfaces:
-    - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-      accessConfigs:
-      - name: External NAT
-        type: ONE_TO_ONE_NAT
-    tags:
-      items:
-      - http-server
-    metadata:
-        items:
-        - key: startup-script
-          value: |
-            #! /bin/bash
-            apt-get install -y unzip jq
-
-            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
-
-            # Get and install consul
-            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-            unzip 0.5.2_linux_amd64.zip
-            mv consul /usr/local/bin
-            
-            # Configure consul to run DNS on port 53; update resolv.conf
-            mkdir /etc/consul.d
-            echo '{ "ports": { "dns": 53 }, "recursors": ["169.254.169.254"] }' > /etc/consul.d/dns-config.json
-            sed -i "s/nameserver 169.254.169.254/nameserver 127.0.0.1\nnameserver 169.254.169.254/g" /etc/resolv.conf
-
-            # Start consul
-            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
-            
-            # Get and run simple api web app called 'gceme'
-            wget {{ properties["backend_app_bin"] }}
-            chmod +x ./gceme
-            ./gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080 &
-           
-{% for zone in properties["zones"] %}
-# Instance Group Manager for web servers
-- name: {{ WWW_INSTANCE_GROUP + "-" + zone }}
-  type: compute.v1.instanceGroupManager
-  properties:
-    zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["desired_web_servers"] }}
-    baseInstanceName: {{ WWW }}
-    instanceTemplate: $(ref.{{ WWW_INSTANCE_TEMPLATE }}.selfLink)
-
-# Autoscaler
-- name: {{ AUTOSCALER + "-" + zone}}
-  type: compute.v1.autoscaler
-  properties:
-    zone: {{ zone }}
-    target: $(ref.{{ WWW_INSTANCE_GROUP + "-" + zone }}.selfLink)
-    autoscalingPolicy:
-      maxNumReplicas: {{ properties["zones"][zone]["max_web_servers"] }}
-      minNumReplicas: {{ properties["zones"][zone]["min_web_servers"] }}
-      loadBalancingUtilization:
-        utilizationTarget: .8
-
-# Instance Group Manager for internal HAProxy
-- name: {{ HAPROXY_INSTANCE_GROUP + "-" + zone }}
-  type: compute.v1.instanceGroupManager
-  properties:
-    zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["haproxy_servers"] }}
-    baseInstanceName: {{ HAPROXY }}
-    instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
-
-{% endfor %}
+    machine_type: {{ properties["machine_type"]["www"] }}
+    image: {{ properties["image"] }}
+    consul_args: {{ CONSUL_ARGS_STRING }}
+    zones: {{ properties["zones"] }}
+    region: {{ properties["region"] }}
+    backend_app_bin: {{ properties["backend_app_bin"] }}          

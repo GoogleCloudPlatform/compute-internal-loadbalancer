@@ -1,0 +1,77 @@
+{% set API_INSTANCE_TEMPLATE = "instance-template-" + env["name"]  %}
+{% set API_INSTANCE_GROUP =  "instance-group-" + env["name"] %}
+{% set API_AUTOSCALER = "autoscaler-" + env["name"] %}
+resources:
+- name: {{ API_INSTANCE_TEMPLATE }}
+  type: compute.v1.instanceTemplate
+  properties:
+    project: {{ env["project"] }}
+    properties:
+      machineType: {{ properties["machine_type"] }}
+      disks:
+      - deviceName: boot
+        type: PERSISTENT
+        boot: true
+        autoDelete: true
+        initializeParams:
+          sourceImage: {{ properties["image"] }}
+      networkInterfaces:
+      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+        accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+      serviceAccounts: 
+      - email: "default"
+        scopes: 
+        - "https://www.googleapis.com/auth/compute"
+      tags:
+        items:
+        - api 
+      metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            apt-get install -y unzip
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
+
+            # Get and install consul and consul-template
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            unzip 0.5.2_linux_amd64.zip
+            mv consul /usr/local/bin
+
+            # Register service
+            mkdir /etc/consul.d
+            echo "{\"service\": {\"name\": \"api-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/api-internal.json
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
+
+            # Get and run simple api web app called 'gceme'
+            wget {{ properties["backend_app_bin"] }}
+            chmod +x ./gceme
+            ./gceme -port=8080 &
+
+            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+
+{% for zone in properties["zones"] %}
+# Instance Group Manager for web servers
+- name: {{ API_INSTANCE_GROUP + "-" + zone }}
+  type: compute.v1.instanceGroupManager
+  properties:
+    zone: {{ zone }}
+    targetSize: {{ properties["zones"][zone]["desired_api_servers"] }}
+    baseInstanceName: {{ env["name"] }}
+    instanceTemplate: $(ref.{{ API_INSTANCE_TEMPLATE }}.selfLink)
+
+# Autoscaler
+- name: {{ API_AUTOSCALER + "-" + zone}}
+  type: compute.v1.autoscaler
+  properties:
+    zone: {{ zone }}
+    target: $(ref.{{ API_INSTANCE_GROUP + "-" + zone }}.selfLink)
+    autoscalingPolicy:
+      maxNumReplicas: {{ properties["zones"][zone]["max_api_servers"] }}
+      minNumReplicas: {{ properties["zones"][zone]["min_api_servers"] }}
+      loadBalancingUtilization:
+        utilizationTarget: .8
+{% endfor %}

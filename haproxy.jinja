@@ -1,0 +1,110 @@
+{% set HAPROXY_INSTANCE_TEMPLATE = "instance-template-" + env["name"]  %}
+{% set HAPROXY_INSTANCE_GROUP =  "instance-group-" + env["name"] %}
+
+resources:
+- name: {{ HAPROXY_INSTANCE_TEMPLATE }}
+  type: compute.v1.instanceTemplate
+  properties:
+    project: {{ env["project"] }}
+    properties:
+      machineType: {{ properties["machine_type"] }} 
+      disks:
+      - deviceName: boot
+        type: PERSISTENT
+        boot: true
+        autoDelete: true
+        initializeParams:
+          sourceImage: {{ properties["image"] }}
+      networkInterfaces:
+      - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+        accessConfigs:
+        - name: External NAT
+          type: ONE_TO_ONE_NAT
+      serviceAccounts: 
+      - email: "default"
+        scopes: 
+        - "https://www.googleapis.com/auth/compute"
+      tags:
+        items:
+        - haproxy
+      metadata:
+        items:
+        - key: startup-script
+          value: |
+            #! /bin/bash
+            apt-get install -y unzip haproxy
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
+
+            # Get and install consul and consul-template
+            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
+            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
+            unzip 0.5.2_linux_amd64.zip
+            mv consul /usr/local/bin
+            mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
+
+            # Register service
+            mkdir /etc/consul.d
+            echo "{\"service\": {\"name\": \"haproxy-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/haproxy-internal.json
+            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
+
+            # Create haproxy template
+            cat <<EOF >  /etc/haproxy/haproxy.ctmpl
+            global
+                    log /dev/log    local0
+                    log /dev/log    local1 notice
+                    chroot /var/lib/haproxy
+                    stats socket /run/haproxy/admin.sock mode 660 level admin
+                    stats timeout 30s
+                    user haproxy
+                    group haproxy
+                    daemon
+                    # Default SSL material locations
+                    ca-base /etc/ssl/certs
+                    crt-base /etc/ssl/private
+                    # Default ciphers to use on SSL-enabled listening sockets.
+                    # For more information, see ciphers(1SSL). This list is from:
+                    #  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
+                    ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+                    ssl-default-bind-options no-sslv3
+            defaults
+                    log     global
+                    mode    http
+                    option  httplog
+                    option  dontlognull
+                    timeout connect 5000
+                    timeout client  50000
+                    timeout server  50000
+                    errorfile 400 /etc/haproxy/errors/400.http
+                    errorfile 403 /etc/haproxy/errors/403.http
+                    errorfile 408 /etc/haproxy/errors/408.http
+                    errorfile 500 /etc/haproxy/errors/500.http
+                    errorfile 502 /etc/haproxy/errors/502.http
+                    errorfile 503 /etc/haproxy/errors/503.http
+                    errorfile 504 /etc/haproxy/errors/504.http
+            listen http-in
+                    bind *:8080[[range service "$zone.api-internal"]]
+                    server [[.Node]] [[.Address]]:[[.Port]][[end]]  
+            EOF
+
+            # Hack to replace brackets with brace
+            sed -i "s.].}.g" /etc/haproxy/haproxy.ctmpl
+            sed -i "s.\[.{.g" /etc/haproxy/haproxy.ctmpl
+
+            # Generate haproxy config
+            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s &
+
+            # Remove public IP
+            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
+
+{% for zone in properties["zones"] %}
+# Instance Group Manager for internal HAProxy
+- name: {{ HAPROXY_INSTANCE_GROUP + "-" + zone }}
+  type: compute.v1.instanceGroupManager
+  properties:
+    zone: {{ zone }}
+    targetSize: {{ properties["zones"][zone]["haproxy_servers"] }}
+    baseInstanceName: {{ env["name"] }}
+    instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
+{% endfor %}
