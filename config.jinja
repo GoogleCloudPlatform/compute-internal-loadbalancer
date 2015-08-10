@@ -40,6 +40,7 @@ resources:
     image: {{ properties["image"] }}
     consul_args: {{ CONSUL_ARGS_STRING }}
     zones: {{ properties["zones"] }}
+
 - name: {{ HAPROXY_INSTANCE_TEMPLATE }}
   type: compute.v1.instanceTemplate
   properties:
@@ -70,19 +71,21 @@ resources:
         - key: startup-script
           value: |
             #! /bin/bash
-            sudo apt-get install -y unzip haproxy
+            apt-get install -y unzip haproxy
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
             # Get and install consul and consul-template
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
             wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
             tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
             unzip 0.5.2_linux_amd64.zip
-            sudo mv consul /usr/local/bin
-            sudo mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
+            mv consul /usr/local/bin
+            mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
 
             # Register service
-            sudo mkdir /etc/consul.d
-            echo '{"service": {"name": "haproxy-internal", "port": 80}}'  | sudo tee /etc/consul.d/www-internal.json
+            mkdir /etc/consul.d
+            echo "{\"service\": {\"name\": \"haproxy-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/haproxy-internal.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
 
             # Create haproxy template
@@ -120,7 +123,7 @@ resources:
                     errorfile 503 /etc/haproxy/errors/503.http
                     errorfile 504 /etc/haproxy/errors/504.http
             listen http-in
-                    bind *:80[[range service "www-internal"]]
+                    bind *:8080[[range service "$zone.www-internal"]]
                     server [[.Node]] [[.Address]]:[[.Port]][[end]]  
             EOF
 
@@ -164,27 +167,29 @@ resources:
         - key: startup-script
           value: |
             #! /bin/bash
-            sudo apt-get install -y unzip
+            apt-get install -y unzip
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
             # Get and install consul and consul-template
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
             unzip 0.5.2_linux_amd64.zip
-            sudo mv consul /usr/local/bin
+            mv consul /usr/local/bin
 
             # Register service
             mkdir /etc/consul.d
-            echo '{"service": {"name": "www-internal", "port": 8080}}' > /etc/consul.d/www-backend.json
+            echo "{\"service\": {\"name\": \"www-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/www-internal.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
 
             # Get and run simple api web app called 'gceme'
             wget {{ properties["backend_app_bin"] }}
             chmod +x ./gceme
-            ./gceme &
+            ./gceme -port=8080 &
 
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
-# Client
-- name: {{ "client-" + env["deployment"] }}
+# Public HTTP server
+- name: {{ "public-http-" + env["deployment"] }}
   type: compute.v1.instance
   properties:
     machineType:  https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/zones/{{ properties["client_zone"] }}/machineTypes/{{ properties["machine_type"]["consul"] }}
@@ -203,18 +208,20 @@ resources:
         type: ONE_TO_ONE_NAT
     tags:
       items:
-      - client
+      - http-server
     metadata:
         items:
         - key: startup-script
           value: |
             #! /bin/bash
-            sudo apt-get install -y unzip jq
+            apt-get install -y unzip jq
+
+            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
             # Get and install consul
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
             unzip 0.5.2_linux_amd64.zip
-            sudo mv consul /usr/local/bin
+            mv consul /usr/local/bin
             
             # Configure consul to run DNS on port 53; update resolv.conf
             mkdir /etc/consul.d
@@ -223,6 +230,11 @@ resources:
 
             # Start consul
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ CONSUL_ARGS_STRING}} &
+            
+            # Get and run simple api web app called 'gceme'
+            wget {{ properties["backend_app_bin"] }}
+            chmod +x ./gceme
+            ./gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080 &
            
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers

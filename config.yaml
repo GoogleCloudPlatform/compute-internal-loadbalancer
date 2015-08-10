@@ -29,17 +29,17 @@ resources:
       client_zone: us-central1-a
       zones: 
         us-central1-a: 
-          desired_web_servers: 2
-          max_web_servers: 8
-          min_web_servers: 2
+          desired_web_servers: 5
+          max_web_servers: 60
+          min_web_servers: 1
           haproxy_servers: 1
         us-central1-b: 
-          desired_web_servers: 2
-          max_web_servers: 8
-          min_web_servers: 2
+          desired_web_servers: 5
+          max_web_servers: 60
+          min_web_servers: 1
           haproxy_servers: 1
         us-central1-f: 
-          desired_web_servers: 4
-          max_web_servers: 8
-          min_web_servers: 2
+          desired_web_servers: 5
+          max_web_servers: 60
+          min_web_servers: 1
           haproxy_servers: 1
