@@ -1,5 +1,5 @@
-{% set HAPROXY_INSTANCE_TEMPLATE = "instance-template-" + env["name"]  %}
-{% set HAPROXY_INSTANCE_GROUP =  "instance-group-" + env["name"] %}
+{% set HAPROXY_INSTANCE_TEMPLATE =  env["name"] + "-it"  %}
+{% set HAPROXY_INSTANCE_GROUP =   env["name"] + "-ig" %}
 
 resources:
 - name: {{ HAPROXY_INSTANCE_TEMPLATE }}

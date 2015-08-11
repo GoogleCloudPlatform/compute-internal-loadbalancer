@@ -13,14 +13,14 @@
 # limitations under the License.
 
 {% set FRONTEND = env["name"] %}
-{% set FRONTEND_INSTANCE_GROUP = "instance-group-" + FRONTEND %}
-{% set FRONTEND_INSTANCE_TEMPLATE = "instance-template-" + FRONTEND %}
+{% set FRONTEND_INSTANCE_GROUP = FRONTEND + "-ig" %}
+{% set FRONTEND_INSTANCE_TEMPLATE =  FRONTEND + "-it" %}
 
-{% set HEALTHCHECK = FRONTEND + "-healthcheck" %}
-{% set FORWARDING_RULE = FRONTEND + "-forwardingrule" %}
-{% set BACKEND_SERVICE = FRONTEND + "-backendservice" %}
-{% set URL_MAP = FRONTEND + "-urlmap" %}
-{% set TARGET_HTTP_PROXY = FRONTEND + "-targethttpproxy" %}
+{% set HEALTHCHECK = FRONTEND + "-hc" %}
+{% set FORWARDING_RULE = FRONTEND + "-fw" %}
+{% set BACKEND_SERVICE = FRONTEND + "-bs" %}
+{% set URL_MAP = FRONTEND + "-urlm" %}
+{% set TARGET_HTTP_PROXY = FRONTEND + "-proxy"%}
 
 resources:
 - name: {{ FRONTEND_INSTANCE_TEMPLATE }}
@@ -85,3 +85,54 @@ resources:
     baseInstanceName: {{ env["name"] }}
     instanceTemplate: $(ref.{{ FRONTEND_INSTANCE_TEMPLATE }}.selfLink)
 {% endfor %}
+
+# HTTP Health Check that load balancer will execute against web server instances
+- type: compute.v1.httpHealthCheck
+  name: {{ HEALTHCHECK }}
+  properties:
+    port: 80
+    requestPath: /
+    timeoutSec: 3
+    description: Web server health check
+    checkIntervalSec: 3
+    unhealthyThreshold: 5
+    healthyThreshold: 2
+
+# Backend service
+- type: compute.v1.backendService
+  name: {{ BACKEND_SERVICE }}
+  properties:
+    description: backend service for integration tests
+    healthChecks:
+      - $(ref.{{ HEALTHCHECK }}.selfLink)
+    port: 80
+    portName: http
+    protocol: HTTP
+    timeoutSec: 30
+    backends: 
+      {% for zone in properties["zones"] %}
+      - group: $(ref.{{ FRONTEND_INSTANCE_GROUP + "-" + zone }}.instanceGroup)
+        balancingMode: RATE
+        maxRatePerInstance: 100
+      {% endfor %}
+
+# URL Map
+- type: compute.v1.urlMap
+  name: {{ URL_MAP }}
+  properties:
+    defaultService: $(ref.{{ BACKEND_SERVICE }}.selfLink)
+
+# HTTP Proxy
+- type: compute.v1.targetHttpProxy
+  name: {{ TARGET_HTTP_PROXY }}
+  properties:
+    urlMap: $(ref.{{ URL_MAP }}.selfLink)
+
+# Forwarding Rule
+- type: compute.v1.globalForwardingRule
+  name: {{ FORWARDING_RULE }}
+  properties:
+    IPProtocol: TCP
+    portRange: 80
+    target: $(ref.{{ TARGET_HTTP_PROXY }}.selfLink)
+    region: {{ properties["region"] }}

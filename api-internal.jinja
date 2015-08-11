@@ -1,6 +1,6 @@
-{% set API_INSTANCE_TEMPLATE = "instance-template-" + env["name"]  %}
-{% set API_INSTANCE_GROUP =  "instance-group-" + env["name"] %}
-{% set API_AUTOSCALER = "autoscaler-" + env["name"] %}
+{% set API_INSTANCE_TEMPLATE =  env["name"] + "-it"  %}
+{% set API_INSTANCE_GROUP =   env["name"] + "-ig" %}
+{% set API_AUTOSCALER =  env["name"] + "-as" %}
 resources:
 - name: {{ API_INSTANCE_TEMPLATE }}
   type: compute.v1.instanceTemplate
