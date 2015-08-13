@@ -93,7 +93,7 @@ resources:
             sed -i "s.\[.{.g" /etc/haproxy/haproxy.ctmpl
 
             # Generate haproxy config
-            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s &
+            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s -max-stale 5s -wait 5s &
 
             # Remove public IP
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
