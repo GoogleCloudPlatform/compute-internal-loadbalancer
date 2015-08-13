@@ -48,9 +48,22 @@ resources:
 
             # Get and run simple api web app called 'gceme'
             wget {{ properties["backend_app_bin"] }}
-            chmod +x ./gceme
-            ./gceme -port=8080 &
+            mkdir /opt/www && mv gceme /opt/www && chmod +x /opt/www/gceme
 
+            cat <<EOF > /etc/systemd/system/www.service
+            [Unit]
+            Description=www
+            [Service]
+            ExecStart=/opt/www/gceme -port=8080
+            WorkingDirectory=/opt/www
+            Restart=always
+            LimitNOFILE=49152
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl enable www
+            systemctl start www
             gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
 {% for zone in properties["zones"] %}

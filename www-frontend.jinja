@@ -72,8 +72,23 @@ resources:
             
             # Get and run simple api web app called 'gceme'
             wget {{ properties["backend_app_bin"] }}
-            chmod +x ./gceme
-            ./gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080 &
+            mkdir /opt/www && mv gceme /opt/www && chmod +x /opt/www/gceme
+
+            cat <<EOF > /etc/systemd/system/www.service
+            [Unit]
+            Description=www
+            [Service]
+            ExecStart=/opt/www/gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080
+            WorkingDirectory=/opt/www
+            Restart=always
+            LimitNOFILE=49152
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl enable www
+            systemctl start www
+
  
 {% for zone in properties["zones"] %}
 # Instance Group Manager for internal HAProxy
