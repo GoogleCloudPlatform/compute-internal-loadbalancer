@@ -21,7 +21,7 @@
 {% set CONSUL_ARGS_LIST = [] %}
 {% set _ = CONSUL_ARGS_LIST.append("-retry-max 10") %}
 {% set _ = CONSUL_ARGS_LIST.append("-retry-interval 30s") %}
-{% for zone in properties["zones"] %}
+{% for zone in properties["zones_to_use"]%}
 {% set _ = CONSUL_ARGS_LIST.append("-retry-join " + CONSUL + "-" + zone) %}
 {% endfor %}
 {% set CONSUL_ARGS_STRING = CONSUL_ARGS_LIST|join(' ') %}
@@ -33,7 +33,7 @@ resources:
     machine_type: {{ properties["machine_type"]["consul"] }}
     image: {{ properties["image"] }}
     consul_args: {{ CONSUL_ARGS_STRING }}
-    zones: {{ properties["zones"] }}
+    zones: {{ properties["zones_to_use"] }}
 
 - name: {{ HAPROXY }}
   type: haproxy.jinja

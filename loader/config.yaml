@@ -19,18 +19,18 @@ resources:
     name: loader
     type: config.jinja
     properties: 
-      target: http://107.178.252.126/
-      output_bucket: gs://gce-ilb-load
-      date_prefix: "20150812"
-      image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150710
-      test_duration: 90m
+      target: "{{ var `target`}}"
+      output_bucket: "{{ var `output_bucket`}}"
+      date_prefix: "{{timestamp}}"
+      image: "{{var `image`}}"
+      test_duration: "{{var `duration`}}"
       region: us-central1
       machine_type: 
-        loader: n1-highcpu-16
+        loader: "{{var `machine_type`}}"
       zones: 
         us-central1-b: 
-          loader_servers: 3
+          loader_servers: "{{var `machines_per_zone`}}"
         us-central1-c: 
-          loader_servers: 3
-        us-central1-f: 
-          loader_servers: 3
+          loader_servers: "{{var `machines_per_zone`}}"
+#        us-central1-f: 
+#          loader_servers: "{{var `machines_per_zone`}}"

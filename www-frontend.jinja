@@ -97,6 +97,7 @@ resources:
   properties:
     zone: {{ zone }}
     targetSize: {{ properties["zones"][zone]["www_servers"] }}
+    size: {{ properties["zones"][zone]["www_servers_size"] }}
     baseInstanceName: {{ env["name"] }}
     instanceTemplate: $(ref.{{ FRONTEND_INSTANCE_TEMPLATE }}.selfLink)
 {% endfor %}

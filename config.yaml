@@ -23,31 +23,40 @@ resources:
     name: internal
     type: config.jinja
     properties: 
-      image: "https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150710"
+      image: {{var `image`}}
       region: us-central1
-      backend_app_bin: "https://storage.googleapis.com/evandbrown17/gceme"
+      backend_app_bin: {{var `backend_app_bin`}}
       machine_type: 
         consul: f1-micro
         haproxy: n1-standard-1
         api: n1-standard-1
         www: n1-standard-1
-      client_zone: us-central1-a
+      zones_to_use: [us-central1-a, us-central1-b]
       zones: 
         us-central1-a: 
-          desired_api_servers: 5
-          max_api_servers: 60
-          min_api_servers: 1
-          haproxy_servers: 1
-          www_servers: 1
+          api_servers: {{var `api_servers`}}
+          api_servers_size: {{var `api_servers_size`}}
+          haproxy_servers: {{var `haproxy_servers`}}
+          haproxy_servers_size: {{var `haproxy_servers_size`}}
+          www_servers: {{var `www_servers`}}
+          www_servers_size: {{var `www_servers_size`}}
+          max_api_servers: 100
+          min_api_servers: 0
         us-central1-b: 
-          desired_api_servers: 5
-          max_api_servers: 60
-          min_api_servers: 1
-          haproxy_servers: 1
-          www_servers: 1
-        us-central1-f: 
-          desired_api_servers: 5
-          max_api_servers: 60
-          min_api_servers: 1
-          haproxy_servers: 1
-          www_servers: 1
+          api_servers: {{var `api_servers`}}
+          api_servers_size: {{var `api_servers_size`}}
+          haproxy_servers: {{var `haproxy_servers`}}
+          haproxy_servers_size: {{var `haproxy_servers_size`}}
+          www_servers: {{var `www_servers`}}
+          www_servers_size: {{var `www_servers_size`}}
+          max_api_servers: 100
+          min_api_servers: 0
+#        us-central1-f: 
+#          api_servers: {{var `api_servers`}}
+#          api_servers_size: {{var `api_servers_size`}}
+#          haproxy_servers: {{var `haproxy_servers`}}
+#          haproxy_servers_size: {{var `haproxy_servers_size`}}
+#          www_servers: {{var `www_servers`}}
+#          www_servers_size: {{var `www_servers_size`}}
+#          max_api_servers: 100
+#          min_api_servers: 0

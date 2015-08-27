@@ -105,6 +105,7 @@ resources:
   properties:
     zone: {{ zone }}
     targetSize: {{ properties["zones"][zone]["haproxy_servers"] }}
+    size: {{ properties["zones"][zone]["haproxy_servers_size"] }}
     baseInstanceName: {{ env["name"] }}
     instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
 {% endfor %}

@@ -72,7 +72,8 @@ resources:
   type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["desired_api_servers"] }}
+    targetSize: {{ properties["zones"][zone]["api_servers"] }}
+    size: {{ properties["zones"][zone]["api_servers_size"] }}
     baseInstanceName: {{ env["name"] }}
     instanceTemplate: $(ref.{{ API_INSTANCE_TEMPLATE }}.selfLink)
 
