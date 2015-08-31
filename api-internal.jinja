@@ -57,7 +57,7 @@ resources:
             ExecStart=/opt/www/gceme -port=8080
             WorkingDirectory=/opt/www
             Restart=always
-            LimitNOFILE=49152
+            LimitNOFILE=9999999
             [Install]
             WantedBy=multi-user.target
             EOF
