@@ -28,9 +28,5 @@ resources:
       machine_type: 
         loader: "{{var `machine_type`}}"
       zones: 
-        us-central1-b: 
-          loader_servers: "{{var `machines_per_zone`}}"
-        us-central1-c: 
-          loader_servers: "{{var `machines_per_zone`}}"
-#        us-central1-f: 
-#          loader_servers: "{{var `machines_per_zone`}}"
+        us-central1-f: 
+      loader_servers: "{{var `machines_per_zone`}}"

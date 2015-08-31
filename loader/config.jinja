@@ -42,9 +42,16 @@ resources:
             cd /opt/wrk
             make
 
+            # Tune kernel limits
+            #sysctl fs.file-max=9999999
+            #sysctl fs.nr_open=9999999
+
             # Set params for load test
-            conns=640
-            threads=`nproc`
+            loaders={{properties["loader_servers"]}}
+            #threads=`nproc`
+            threads=100
+            #conns=$((threads * 20))
+            conns=5000
             target={{ properties["target"] }}
             duration={{ properties["test_duration"] }}
             job_id={{ JOB_ID }}
@@ -84,6 +91,9 @@ resources:
             end
             EOF
 
+            # Script that will be invoked by systemd to generate load and report it
+            cat <<EOF > /opt/wrk/loader.sh
+
             load()
             {
             # Run test
@@ -95,21 +105,37 @@ resources:
               $target
             }
 
-            load | tail -1 > stats.json
-            cat <<EOF > job.json
+            load | tail -1 > $(hostname).json
+            cat <<IEOF > job.json
             {
-                "job_id": "$job_id",
-                "conns": "$conns",
-                "threads": "$threads",
+                "timestamp": "{{properties["date_prefix"]}}",
+                "deployment_id": "$job_id",
+                "workers": "$loaders",
+                "conns_per_worker": "$conns",
+                "threads_per_worker": "$threads",
                 "target": "$target",
-                "duration": "$duration",
-                "zone": "$zone",
-                "host": "$(hostname)"
+                "duration": "$duration"
             }
-            EOF
+            IEOF
 
             # Upload to GCS
-            gsutil cp *.json {{properties["output_bucket"] + "/" + properties["date_prefix"] + "/"}}$job_id/$(hostname)/
+            gsutil cp *.json {{properties["output_bucket"] + "/" + properties["date_prefix"] + "/"}}
+            EOF
+
+            cat <<EOF > /etc/systemd/system/loader.service
+            [Unit]
+            Description=loader
+            [Service]
+            ExecStart=/bin/sh /opt/wrk/loader.sh
+            WorkingDirectory=/opt/wrk
+            Restart=no
+            LimitNOFILE=9999999
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl enable loader
+            systemctl start loader
 
 {% for zone in properties["zones"] %}
 # Instance Group Manager for loader
@@ -117,7 +143,7 @@ resources:
   type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["loader_servers"] }}
+    targetSize: {{ properties["loader_servers"] }}
     baseInstanceName: {{ LOADER + "-" + zone }}
     instanceTemplate: $(ref.{{LOADER_INSTANCE_TEMPLATE }}.selfLink)
 {% endfor %}
