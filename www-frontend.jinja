@@ -53,22 +53,27 @@ resources:
         - key: startup-script
           value: |
             #! /bin/bash
-            apt-get install -y unzip jq
+            apt-get update -y
+            apt-get install -y unzip jq dnsutils dnsmasq
 
             zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
-            # Get and install consul
+            # Get and install consul and consul-template
             wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
+            wget https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz
+            tar -zxf consul-template_0.10.0_linux_amd64.tar.gz 
             unzip 0.5.2_linux_amd64.zip
             mv consul /usr/local/bin
-            
+            mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin
+
             # Configure consul to run DNS on port 53; update resolv.conf
             mkdir /etc/consul.d
-            echo '{ "ports": { "dns": 53 }, "recursors": ["169.254.169.254"] }' > /etc/consul.d/dns-config.json
+            echo '{ "dns_config": { "allow_stale": true, "node_ttl": "20s", "service_ttl": { "*": "20s"} } }' > /etc/consul.d/dns-config.json
             sed -i "s/nameserver 169.254.169.254/nameserver 127.0.0.1\nnameserver 169.254.169.254/g" /etc/resolv.conf
 
             # Start consul
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
+           
             
             # Get and run simple api web app called 'gceme'
             wget {{ properties["backend_app_bin"] }}
@@ -81,7 +86,7 @@ resources:
             ExecStart=/opt/www/gceme -frontend=true -port=80 -backend-service=http://$zone.haproxy-internal.service.consul:8080
             WorkingDirectory=/opt/www
             Restart=always
-            LimitNOFILE=49152
+            LimitNOFILE=999999
             [Install]
             WantedBy=multi-user.target
             EOF
@@ -89,7 +94,33 @@ resources:
             systemctl enable www
             systemctl start www
 
- 
+            #  Configure dnsmasq
+            echo "server=/consul/127.0.0.1#8600" > /etc/dnsmasq.d/10-consul
+
+            # Create haproxy template
+            cat <<EOF >  /etc/hosts.consul.ctmpl
+            [[range service "$zone.haproxy-internal"]]
+            [[.Address]] $zone.[[.Name]] $zone.[[.Name]].service.consul[[end]]  
+            EOF
+
+            # Hack to replace brackets with brace
+            sed -i "s.].}.g" /etc/hosts.consul.ctmpl
+            sed -i "s.\[.{.g" /etc/hosts.consul.ctmpl
+
+            # Generate haproxy config
+            consul-template -template "/etc/hosts.consul.ctmpl:/etc/hosts.consul:systemctl reload dnsmasq" -retry 30s -max-stale 10s -wait 10s &
+
+            # Write dnsmasq config to use hosts.consul file
+            cat <<EOF > /etc/dnsmasq.conf
+            addn-hosts=/etc/hosts.consul
+            local-ttl=10
+            EOF
+
+            systemctl enable dnsmasq
+            systemctl start dnsmasq
+            sleep 10
+            systemctl restart dnsmasq
+
 {% for zone in properties["zones"] %}
 # Instance Group Manager for internal HAProxy
 - name: {{ FRONTEND_INSTANCE_GROUP + "-" + zone }}
