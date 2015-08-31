@@ -38,7 +38,10 @@ resources:
           sudo mv consul /usr/local/bin
 
           # Run consul
-          consul agent -server -data-dir /tmp/consul {{ properties["consul_args"] + " -bootstrap-expect " + properties["zones"]|length|string }} &
+          mkdir /etc/consul.d
+          echo '{ "dns_config": { "allow_stale": true, "node_ttl": "20s", "service_ttl": { "*": "20s"} } }' > /etc/consul.d/dns-config.json
+
+          consul agent -server -data-dir /etc/consul.d {{ properties["consul_args"] + " -bootstrap-expect " + properties["zones"]|length|string }} &
 
           gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 {% endfor %}
