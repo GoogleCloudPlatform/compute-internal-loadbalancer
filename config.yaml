@@ -27,13 +27,13 @@ resources:
       region: us-central1
       backend_app_bin: {{var `backend_app_bin`}}
       machine_type: 
-        consul: f1-micro
-        haproxy: n1-standard-1
-        api: n1-standard-1
-        www: n1-standard-1
+        consul: n1-highcpu-2
+        haproxy: n1-highcpu-4
+        api: n1-highcpu-2 
+        www: n1-highcpu-2
       zones_to_use: [us-central1-a, us-central1-b]
       zones: 
-        us-central1-a: 
+        us-central1-f: 
           api_servers: {{var `api_servers`}}
           api_servers_size: {{var `api_servers_size`}}
           haproxy_servers: {{var `haproxy_servers`}}
@@ -51,7 +51,7 @@ resources:
           www_servers_size: {{var `www_servers_size`}}
           max_api_servers: 100
           min_api_servers: 0
-#        us-central1-f: 
+#        us-central1-a: 
 #          api_servers: {{var `api_servers`}}
 #          api_servers_size: {{var `api_servers_size`}}
 #          haproxy_servers: {{var `haproxy_servers`}}
