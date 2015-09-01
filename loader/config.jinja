@@ -42,16 +42,11 @@ resources:
             cd /opt/wrk
             make
 
-            # Tune kernel limits
-            #sysctl fs.file-max=9999999
-            #sysctl fs.nr_open=9999999
-
             # Set params for load test
             loaders={{properties["loader_servers"]}}
-            #threads=`nproc`
-            threads=100
-            #conns=$((threads * 20))
-            conns=5000
+            nprocs=`nproc`
+            threads=$((nprocs * 2))
+            conns=$((threads * 50))
             target={{ properties["target"] }}
             duration={{ properties["test_duration"] }}
             job_id={{ JOB_ID }}
