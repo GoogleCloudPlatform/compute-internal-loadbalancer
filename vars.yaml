@@ -1,9 +1,10 @@
 variables:
   image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150818
-  backend_app_bin: https://storage.googleapis.com/evandbrown17/gceme
-  api_servers: 12
-  api_servers_size: 12
-  haproxy_servers: 4
-  haproxy_servers_size: 4
-  www_servers: 12
-  www_servers_size: 12 
+  haproxy_image: https://www.googleapis.com/compute/v1/projects/evandbrown17/global/images/haproxy-1441933419
+  backend_app_bin: https://storage.googleapis.com/evandbrown17/linux/gceme
+  api_servers: 2
+  api_servers_size: 2
+  haproxy_servers: 2
+  haproxy_servers_size: 2
+  www_servers: 2
+  www_servers_size: 2 

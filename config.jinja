@@ -39,7 +39,7 @@ resources:
   type: haproxy.jinja
   properties:
     machine_type: {{ properties["machine_type"]["haproxy"] }}
-    image: {{ properties["image"] }}
+    image: {{ properties["haproxy_image"] }}
     consul_args: {{ CONSUL_ARGS_STRING }}
     zones: {{ properties["zones"] }}
 

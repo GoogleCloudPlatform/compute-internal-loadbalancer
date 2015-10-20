@@ -36,6 +36,7 @@ resources:
             #! /bin/bash
 
             # Install wrk
+            apt-get update -y
             apt-get install -y git build-essential libssl-dev
             cd /opt
             git clone https://github.com/wg/wrk.git
