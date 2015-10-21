@@ -53,12 +53,3 @@ resources:
           www_servers_size: {{var `www_servers_size`}}
           max_api_servers: 100
           min_api_servers: 0
-#        us-central1-a: 
-#          api_servers: {{var `api_servers`}}
-#          api_servers_size: {{var `api_servers_size`}}
-#          haproxy_servers: {{var `haproxy_servers`}}
-#          haproxy_servers_size: {{var `haproxy_servers_size`}}
-#          www_servers: {{var `www_servers`}}
-#          www_servers_size: {{var `www_servers_size`}}
-#          max_api_servers: 100
-#          min_api_servers: 0
