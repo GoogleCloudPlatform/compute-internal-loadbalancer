@@ -17,9 +17,6 @@ resources:
           sourceImage: {{ properties["image"] }}
       networkInterfaces:
       - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-        accessConfigs:
-        - name: External NAT
-          type: ONE_TO_ONE_NAT
       serviceAccounts: 
       - email: "default"
         scopes: 

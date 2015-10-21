@@ -47,7 +47,7 @@ resources:
   type: api-internal.jinja
   properties:
     machine_type: {{ properties["machine_type"]["api"] }}
-    image: {{ properties["image"] }}
+    image: {{ properties["internal_api_image"] }}
     consul_args: {{ CONSUL_ARGS_STRING }}
     zones: {{ properties["zones"] }}
     backend_app_bin: {{ properties["backend_app_bin"] }}

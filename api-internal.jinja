@@ -17,9 +17,6 @@ resources:
           sourceImage: {{ properties["image"] }}
       networkInterfaces:
       - network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
-        accessConfigs:
-        - name: External NAT
-          type: ONE_TO_ONE_NAT
       serviceAccounts: 
       - email: "default"
         scopes: 
@@ -32,39 +29,11 @@ resources:
         - key: startup-script
           value: |
             #! /bin/bash
-            apt-get install -y unzip
-
             zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
-            # Get and install consul and consul-template
-            wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-            unzip 0.5.2_linux_amd64.zip
-            mv consul /usr/local/bin
-
             # Register service
-            mkdir /etc/consul.d
             echo "{\"service\": {\"name\": \"api-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/api-internal.json
             consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
-
-            # Get and run simple api web app called 'gceme'
-            wget {{ properties["backend_app_bin"] }}
-            mkdir /opt/www && mv gceme /opt/www && chmod +x /opt/www/gceme
-
-            cat <<EOF > /etc/systemd/system/www.service
-            [Unit]
-            Description=www
-            [Service]
-            ExecStart=/opt/www/gceme -port=8080
-            WorkingDirectory=/opt/www
-            Restart=always
-            LimitNOFILE=9999999
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            systemctl enable www
-            systemctl start www
-            gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers

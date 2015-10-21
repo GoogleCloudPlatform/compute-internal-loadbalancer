@@ -25,6 +25,7 @@ resources:
     properties: 
       image: {{var `image`}}
       haproxy_image: {{var `haproxy_image`}}
+      internal_api_image: {{var `internal_api_image`}}
       region: us-central1
       backend_app_bin: {{var `backend_app_bin`}}
       machine_type: 

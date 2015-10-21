@@ -1,0 +1,48 @@
+{
+  "variables": {
+    "account_file": "key.json",
+    "project_id": "null",
+    "backend_app_bin": "https://storage.googleapis.com/evandbrown17/linux/gceme"
+  },
+  "builders": [
+    {
+      "type": "googlecompute",
+      "account_file": "{{user `account_file`}}",
+      "project_id": "{{user `project_id`}}",
+      "source_image": "debian-8-jessie-v20150818",
+      "zone": "us-central1-f",
+      "image_name": "api-internal-{{timestamp}}"
+    }
+  ],
+  "provisioners": [
+      {
+          "type": "file",
+          "source": "www.service",
+          "destination": "/etc/systemd/system/www.service"
+      },
+      {
+      "type": "shell",
+      "inline": [
+            "#! /bin/bash",
+            "apt-get install -y unzip",
+
+            "# Make a few dirs we need",
+            "mkdir -p /etc/consul.d",
+            "mkdir -p /opt/www",
+
+            "# Get and install consul and consul-template",
+            "wget -O consul.zip https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip",
+            "wget -O consul-template.tar.gz https://github.com/hashicorp/consul-template/releases/download/v0.10.0/consul-template_0.10.0_linux_amd64.tar.gz",
+            "tar -zxf consul-template.tar.gz",
+            "unzip consul.zip",
+            "mv consul /usr/local/bin",
+            "mv consul-template_0.10.0_linux_amd64/consul-template  /usr/local/bin",
+
+            "wget -O /opt/www/gceme {{user `backend_app_bin`}}",
+            "chmod +x /opt/www/gceme",
+
+            "systemctl enable www.service"
+      ]
+    }
+  ]
+}
