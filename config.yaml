@@ -23,11 +23,11 @@ resources:
     name: internal
     type: config.jinja
     properties: 
-      image: {{var `image`}}
-      haproxy_image: {{var `haproxy_image`}}
-      internal_api_image: {{var `internal_api_image`}}
+      image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150818
+      haproxy_image: https://www.googleapis.com/compute/v1/projects/evandbrown17/global/images/haproxy-1441933419
+      internal_api_image: https://www.googleapis.com/compute/v1/projects/evandbrown17/global/images/api-internal-1445381972
       region: us-central1
-      backend_app_bin: {{var `backend_app_bin`}}
+      backend_app_bin: https://storage.googleapis.com/evandbrown17/linux/gceme
       machine_type: 
         consul: n1-highcpu-2
         haproxy: n1-highcpu-4
@@ -36,20 +36,14 @@ resources:
       zones_to_use: [us-central1-a, us-central1-b]
       zones: 
         us-central1-f: 
-          api_servers: {{var `api_servers`}}
-          api_servers_size: {{var `api_servers_size`}}
-          haproxy_servers: {{var `haproxy_servers`}}
-          haproxy_servers_size: {{var `haproxy_servers_size`}}
-          www_servers: {{var `www_servers`}}
-          www_servers_size: {{var `www_servers_size`}}
-          max_api_servers: 100
+          api_servers: 2
+          haproxy_servers: 2
+          www_servers: 2
+          max_api_servers: 10
           min_api_servers: 0
         us-central1-b: 
-          api_servers: {{var `api_servers`}}
-          api_servers_size: {{var `api_servers_size`}}
-          haproxy_servers: {{var `haproxy_servers`}}
-          haproxy_servers_size: {{var `haproxy_servers_size`}}
-          www_servers: {{var `www_servers`}}
-          www_servers_size: {{var `www_servers_size`}}
-          max_api_servers: 100
+          api_servers: 2
+          haproxy_servers: 2
+          www_servers: 2
+          max_api_servers: 10
           min_api_servers: 0
