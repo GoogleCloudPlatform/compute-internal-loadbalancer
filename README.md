@@ -56,7 +56,7 @@ In this section you will build two GCE images: one for the HAProxy servers, and 
 * Run `gcloud compute images list --no-standard-images` and note the name of each of the images you created in the above steps.
 
 ## Deploy
-* Open `config.yaml` in the root of this repo and replace the `PROJECT_NAME` and `IMAGE_NAME` strings in the `haproxy_image` and `internal_api_image` properties
+* Open `config.yaml` in the root of this repo and replace the `YOUR_PROJECT_ID` and `YOUR_IMAGE_NAME` strings in the `haproxy_image` and `internal_api_image` properties
 
 * Deploy the infrastructure:
 

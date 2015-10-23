@@ -23,9 +23,9 @@ resources:
     name: demo
     type: config.jinja
     properties: 
+      haproxy_image: https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT_ID/global/images/YOUR_IMAGE_NAME
+      internal_api_image: https://www.googleapis.com/compute/v1/projects/YOUR_PROJECT_ID/global/images/YOUR_IMAGE_NAME
       image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150818
-      haproxy_image: https://www.googleapis.com/compute/v1/projects/evandbrown17/global/images/haproxy-1441933419
-      internal_api_image: https://www.googleapis.com/compute/v1/projects/evandbrown17/global/images/api-internal-1445381972
       region: us-central1
       backend_app_bin: https://storage.googleapis.com/evandbrown17/linux/gceme
       machine_type: 
