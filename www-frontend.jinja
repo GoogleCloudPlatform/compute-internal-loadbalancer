@@ -23,6 +23,16 @@
 {% set TARGET_HTTP_PROXY = FRONTEND + "-proxy"%}
 
 resources:
+# Firewall that allows Network LB to connect to web servers
+- name: {{ FRONTEND }}
+  type: compute.v1.firewall
+  properties:
+    network: https://www.googleapis.com/compute/v1/projects/{{ env["project"] }}/global/networks/default
+    sourceRanges: [ "0.0.0.0/0" ]
+    targetTags: ["http-server"]
+    allowed:
+    - IPProtocol: tcp
+      ports: [ "80" ]
 - name: {{ FRONTEND_INSTANCE_TEMPLATE }}
   type: compute.v1.instanceTemplate
   properties:
