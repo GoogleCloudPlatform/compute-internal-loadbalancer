@@ -20,7 +20,7 @@ imports:
   - path: www-frontend.jinja
 resources: 
   - 
-    name: internal
+    name: demo
     type: config.jinja
     properties: 
       image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150818
@@ -29,10 +29,10 @@ resources:
       region: us-central1
       backend_app_bin: https://storage.googleapis.com/evandbrown17/linux/gceme
       machine_type: 
-        consul: n1-highcpu-2
-        haproxy: n1-highcpu-4
-        api: n1-highcpu-2 
-        www: n1-highcpu-2
+        consul: n1-standard-1
+        haproxy: n1-standard-1
+        api: n1-standard-1
+        www: n1-standard-1
       zones_to_use: [us-central1-a, us-central1-b]
       zones: 
         us-central1-f: 
