@@ -34,7 +34,7 @@ In this section you will build two GCE images: one for the HAProxy servers, and 
   ```
   {
     "variables": {
-      "account_file": "/home/evanbrown/key.json",
+      "account_file": "/path/to/your/key.json",
       ...
     },
     ...
