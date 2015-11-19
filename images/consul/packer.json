@@ -1,0 +1,62 @@
+{
+  "variables": {
+    "account_file": "",
+    "project_id": "null"
+  },
+  "builders": [
+    {
+      "type": "googlecompute",
+      "account_file": "{{user `account_file`}}",
+      "project_id": "{{user `project_id`}}",
+      "source_image": "debian-8-jessie-v20150818",
+      "zone": "us-central1-f",
+      "image_name": "consul-{{timestamp}}"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "# Make a dir we need",
+        "mkdir -p /etc/consul.d"
+      ]
+    }, 
+    {
+      "type": "file",
+      "source": "consul.service",
+      "destination": "/etc/systemd/system/consul.service"
+    },
+    {
+      "type": "file",
+      "source": "consul_servers.service",
+      "destination": "/etc/systemd/system/consul_servers.service"
+    },
+    {
+      "type": "file",
+      "source": "consul_servers.sh",
+      "destination": "/usr/bin/consul_servers.sh"
+    },
+    {
+      "type": "file",
+      "source": "dns-config.json",
+      "destination": "/etc/consul.d/dns-config.json"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "#!/bin/bash",
+        "apt-get install -y unzip",
+
+        "# Download and install consul",
+        "wget -O consul.zip https://releases.hashicorp.com/consul/0.5.2/consul_0.5.2_linux_amd64.zip",
+        "unzip consul.zip",
+        "mv consul /usr/bin",
+
+        "chmod +x /usr/bin/consul_servers.sh",
+    
+        "# Enable consul",
+        "systemctl enable consul.service"
+      ]
+    }
+  ]
+}

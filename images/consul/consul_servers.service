@@ -1,0 +1,5 @@
+[Unit]
+Description=consul_servers
+
+[Service]
+ExecStart=/bin/sh -c "/usr/bin/consul_servers.sh > /etc/consul-servers"
