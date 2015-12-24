@@ -2,7 +2,7 @@
 export zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
 
 # Set zone in Consul and HAProxy files
-envsubst < "/etc/consul.d/api-internal.json.tpl" > "/etc/consul.d/api-internal.json"
+envsubst < "/etc/consul.d/backend.json.tpl" > "/etc/consul.d/backend.json"
 
 
 # Start consul

@@ -101,36 +101,35 @@ To support service registration and discovery, you must run at least one Consul 
     --image=YOUR_CONSUL_IMAGE_ID
   ```
 
-1. After several minutes, SSH to one of the Consul servers and verify all 3 instances in the cluster have bootstrapped:
-
-  ```sh
-  $ gcloud compute ssh consul-1
-  $ consul members
-  Node      Address          Status  Type    Build  Protocol  DC
-  consul-2  10.240.0.5:8301  alive   server  0.5.2  2         dc1
-  consul-1  10.240.0.3:8301  alive   server  0.5.2  2         dc1
-  consul-3  10.240.0.4:8301  alive   server  0.5.2  2         dc1
-  ```
-  
 ## The HAProxy load balancer
 Lorem ipsum
 
 ### Hands-on: Launch HAProxy load balancers
-  gcloud compute instances create haproxy \
+  gcloud compute instance-templates create haproxy \
     --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
+    --no-address \
+    --image=YOUR_HAPROXY_IMAGE_ID 
+  
+  gcloud compute instance-groups managed create haproxy \
+    --base-instance-name=haproxy \
+    --template=haproxy \
     --zone=us-central1-f \
-    --image=haproxy-1450926930
+    --size=2
 
 ## The Backend aplication
 Lorem ipsum
 
 ### Hands-on: Launch HAProxy load balancers
-  gcloud compute instances create api-internal \
-    --no-address \
+  gcloud compute instance-templates create backend \
     --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
-    --zone=us-central1-f \
-    --image=api-internal-1450940992
+    --no-address \
+    --image=YOUR_BACKEND_IMAGE_ID
 
+  gcloud compute instance-groups managed create backend \
+    --base-instance-name=backend \
+    --template=backend \
+    --zone=us-central1-f \
+    --size=2
 
 
 

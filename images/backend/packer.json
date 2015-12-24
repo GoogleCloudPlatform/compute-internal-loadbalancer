@@ -11,7 +11,7 @@
       "project_id": "{{user `project_id`}}",
       "source_image": "debian-8-jessie-v20150818",
       "zone": "us-central1-f",
-      "image_name": "api-internal-{{timestamp}}"
+      "image_name": "backend-{{timestamp}}"
     }
   ],
   "provisioners": [
@@ -25,8 +25,8 @@
       },
       {
         "type": "file",
-        "source": "api-internal.json.tpl",
-        "destination": "/etc/consul.d/api-internal.json.tpl"
+        "source": "backend.json.tpl",
+        "destination": "/etc/consul.d/backend.json.tpl"
       },
 
       {
@@ -47,13 +47,13 @@
 
       {
         "type": "file",
-        "source": "api-internal.service",
-        "destination": "/etc/systemd/system/api-internal.service"
+        "source": "backend.service",
+        "destination": "/etc/systemd/system/backend.service"
       },
       {
         "type": "file",
-        "source": "api-internal.sh",
-        "destination": "/usr/bin/api-internal.sh"
+        "source": "backend-start.sh",
+        "destination": "/usr/bin/backend-start.sh"
       },
       {
       "type": "shell",
@@ -68,10 +68,10 @@
 
             "chmod +x /opt/www/gceme",
             "chmod +x /usr/bin/consul_servers.sh",
-            "chmod +x /usr/bin/api-internal.sh",
+            "chmod +x /usr/bin/backend-start.sh",
 
             "systemctl enable consul_servers.service",
-            "systemctl enable api-internal.service"
+            "systemctl enable backend.service"
       ]
     }
   ]

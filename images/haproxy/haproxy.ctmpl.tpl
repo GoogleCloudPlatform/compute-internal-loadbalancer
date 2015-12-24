@@ -31,5 +31,5 @@ defaults
         errorfile 503 /etc/haproxy/errors/503.http
         errorfile 504 /etc/haproxy/errors/504.http
 listen http-in
-        bind *:8080{{range service "$zone.api-internal"}}
+        bind *:8080{{range service "$zone.backend"}}
         server {{.Node}} {{.Address}}:{{.Port}}{{end}}  

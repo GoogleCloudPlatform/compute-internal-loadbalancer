@@ -1,11 +1,11 @@
 [Unit]
-Description=api-internal
+Description=backend
 After=consul_servers.service
 Requires=consul_servers.service
 
 [Service]
 EnvironmentFile=/etc/consul-servers
-ExecStart=/usr/bin/api-internal.sh
+ExecStart=/usr/bin/backend-start.sh
 LimitNOFILE=9999999
 
 [Install]
