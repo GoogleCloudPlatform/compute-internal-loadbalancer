@@ -6,7 +6,6 @@ Requires=consul_servers.service
 [Service]
 EnvironmentFile=/etc/consul-servers
 ExecStart=/usr/bin/consul agent -server -data-dir=/etc/consul.d -retry-max=10 -retry-interval=30s $CONSUL_SERVERS
-Restart=always
 
 [Install]
 WantedBy=multi-user.target

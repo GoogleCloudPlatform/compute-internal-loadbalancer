@@ -1,0 +1,11 @@
+[Unit]
+Description=consul
+After=consul_servers.service
+Requires=consul_servers.service
+
+[Service]
+EnvironmentFile=/etc/consul-servers
+ExecStart=/usr/bin/consul_template_start.sh
+
+[Install]
+WantedBy=multi-user.target

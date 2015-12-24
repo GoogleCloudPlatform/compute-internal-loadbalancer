@@ -29,34 +29,28 @@ In this section you will build two GCE images: one for the HAProxy servers, and 
 
 * In your GCP project, navigate to **APIs & auth >> Credentials**, click **Add credentials**, then choose **Service account**. Select the **JSON** key type and click **Create** to download a credential file.
 
-* Edit both `images/api-internal/packer.json` and `images/haproxy/packer.json`, setting the `account_file` property to the fully qualified path of the key file you downloaded in the previous step. For example:
+* cd to `images/api-internal` and build the image for the internal API/microservice. Provide your project ID and the fully-qualified path to the key file you downloaded in the previous step:
 
   ```
-  {
-    "variables": {
-      "account_file": "/path/to/your/key.json",
-      ...
-    },
-    ...
-  }
-  ```
-
-* cd to `images/api-internal` and build the image for the internal API/microservice:
-
-  ```
-  $ packer build -var project_id=REPLACE_WITH_YOUR_PROJECT_ID packer.json
+  $ packer build                             \ 
+    -var project_id=YOUR_PROJECT_ID          \
+    -var account_file=/path/to/your/key.json \
+    packer.json
   ```
 
 * cd to `images/haproxy` and build the image for the internal HAProxy server:
 
   ```
-  $ packer build -var project_id=REPLACE_WITH_YOUR_PROJECT_ID packer.json
+  $ packer build                             \ 
+    -var project_id=YOUR_PROJECT_ID          \
+    -var account_file=/path/to/your/key.json \
+    packer.json
   ```
 
 * Run `gcloud compute images list --no-standard-images` and note the name of each of the images you created in the above steps.
 
 ## Deploy
-* Open `config.yaml` in the root of this repo and replace the `YOUR_PROJECT_ID` and `YOUR_IMAGE_NAME` strings in the `haproxy_image` and `internal_api_image` properties
+* Open `dm/config.yaml` in the root of this repo and replace the `YOUR_PROJECT_ID` and `YOUR_IMAGE_NAME` strings in the `haproxy_image` and `internal_api_image` properties
 
 * Deploy the infrastructure:
 
@@ -64,7 +58,11 @@ In this section you will build two GCE images: one for the HAProxy servers, and 
  $ gcloud deployment-manager deployments create ilb-demo --config=config.yaml
  ```
 
- * When the deployment completes, open the **HTTP load balancing** section of the console and open the IP address of the load balancer create by the deployment.
+ * When the deployment completes, retrieve the IP address of your load balancer by running this command:
+ 
+ ```shell
+ $ gcloud compute forwarding-rules describe www-ilb-demo-fw --global
+ ```
 
  ## Delete
  When you are done, either delete your project or delete the deployment with `gcloud deployment-manager deployments delete ilb-demo`
