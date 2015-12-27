@@ -39,20 +39,20 @@ To support service registration and discovery, you must run at least one Consul 
 1. Configure `gcloud` to use your new project:
 
   ```sh
-  gcloud config set core/project YOUR_NEW_PROJECT_ID
+  $ gcloud config set core/project YOUR_NEW_PROJECT_ID
   ```
 
 1. Create a Google Compute Engine instance named `tool` that has `git` and `packer` pre-installed:
 
   ```sh
-  gcloud compute instances create tool \
+  $ gcloud compute instances create tool \
     --scopes=cloud-platform \
     --zone=us-central1-f \
     --image=debian-8 \
     --metadata "startup-script=apt-get update -y && \
       apt-get install -y git unzip && \
       curl -o /tmp/packer.zip https://releases.hashicorp.com/packer/0.8.6/packer_0.8.6_linux_amd64.zip && \
-      curl -O /tmp/consul.zip https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip && \
+      curl -o /tmp/consul.zip https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip && \
       sudo unzip /tmp/packer.zip -d /usr/local/bin/ && \
       sudo unzip /tmp/consul.zip -d /usr/local/bin/"
   ```
@@ -60,31 +60,31 @@ To support service registration and discovery, you must run at least one Consul 
 1. Connect to the new `tool` instance:
 
   ```sh
-  gcloud compute ssh tool --zone=us-central1-f
+  $ gcloud compute ssh tool --zone=us-central1-f
   ```
 
 1. Clone the source code repository to the `tool` instance:
 
   ```sh
-  git clone https://github.com/GoogleCloudPlatform/compute-internal-loadbalancer.git
+  $ git clone https://github.com/GoogleCloudPlatform/compute-internal-loadbalancer.git
   ```
 
 1. Set an environment variable containing your project ID:
 
   ```sh
-  export PROJECT_ID=$(curl -H "metadata-flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id)
+  $ export PROJECT_ID=$(curl -H "metadata-flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id)
   ```
 
 1. `cd` to the directory containing the Consul image files:
 
   ```sh
-  cd compute-internal-loadbalancer/images/consul
+  $ cd ~/compute-internal-loadbalancer/images/consul
   ```
 
 1. Use `packer` to build the Google Compute Engine VM image for the Consul servers:
 
   ```sh
-  packer build -var project_id=${PROJECT_ID} packer.json
+  $ packer build -var project_id=${PROJECT_ID} packer.json
   ```
 
 1. Copy the ID of the image created:
@@ -97,11 +97,33 @@ To support service registration and discovery, you must run at least one Consul 
 1. Launch 3 Consul servers, being sure you replace the `--image` flag with the image ID output in the previous step:
 
   ```sh
-  gcloud compute instances create consul-1 consul-2 consul-3 \
+  $ gcloud compute instances create consul-1 consul-2 consul-3 \
     --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
     --zone=us-central1-f \
     --no-address \
     --image=YOUR_CONSUL_IMAGE_ID
+  ```
+
+1. Join your `tool` instance to the cluster:
+
+  ```sh
+  $ consul agent \
+    -data-dir=/tmp/consul \
+    -retry-join=consul-1 \
+    -retry-join=consul-2 \
+    -retry-join=consul-3 &
+  ```
+
+1. View cluster members and verify that `consul-1`, `consul-2`, and `consul-3` are joined as type `server`:
+
+  ```sh
+  $ consul members
+      2015/12/27 19:45:51 [INFO] agent.rpc: Accepted client: 127.0.0.1:60140
+      Node          Address           Status  Type    Build  Protocol  DC
+      consul-1      10.240.0.5:8301   alive   server  0.6.0  2         dc1
+      consul-2      10.240.0.3:8301   alive   server  0.6.0  2         dc1
+      consul-3      10.240.0.4:8301   alive   server  0.6.0  2         dc1
+      tool          10.240.0.2:8301   alive   client  0.6.0  2         dc1
   ```
 
 ## The backend application
@@ -178,13 +200,13 @@ In this hands-on section, you will use Packer to build the VM image for the back
 1. On your tools instance, `cd` to the directory containing the backend image files:
 
   ```sh
-  cd compute-internal-loadbalancer/images/backend
+  $ cd ~/compute-internal-loadbalancer/images/backend
   ```
 
 1. Use `packer` to build the Google Compute Engine VM image for the Consul servers:
 
   ```sh
-  packer build -var project_id=${PROJECT_ID} packer.json
+  $ packer build -var project_id=${PROJECT_ID} packer.json
   ```
 
 1. Copy the ID of the image created:
@@ -197,7 +219,7 @@ In this hands-on section, you will use Packer to build the VM image for the back
 1. Create an [instance template](https://cloud.google.com/compute/docs/instance-templates) that describes the configuration of the backend servers, being sure to replace `YOUR_BACKEND_IMAGE_ID` with the output of the previous step:
 
   ```sh
-  gcloud compute instance-templates create backend \
+  $ gcloud compute instance-templates create backend \
     --no-address \
     --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
     --image=YOUR_BACKEND_IMAGE_ID
@@ -206,7 +228,7 @@ In this hands-on section, you will use Packer to build the VM image for the back
 1. Create an [instance group](https://cloud.google.com/compute/docs/instance-groups/) that will launch 2 backend servers using the backend template:
 
   ```sh
-  gcloud compute instance-groups managed create backend \
+  $ gcloud compute instance-groups managed create backend \
     --base-instance-name=backend \
     --template=backend \
     --size=2 \
@@ -251,7 +273,7 @@ In this hands-on section, you will use Packer to build the VM image for the HAPr
 1. On your tools instance, `cd` to the directory containing the HAProxy image files:
 
   ```sh
-  cd compute-internal-loadbalancer/images/haproxy
+  cd ~/compute-internal-loadbalancer/images/haproxy
   ```
 
 1. Use `packer` to build the Google Compute Engine VM image:
@@ -329,13 +351,13 @@ In this hands-on section, you will use Packer to build the VM image for the fron
 1. On your tools instance, `cd` to the directory containing the frontend image files:
 
   ```sh
-  cd compute-internal-loadbalancer/images/frontend
+  $ cd ~/compute-internal-loadbalancer/images/frontend
   ```
 
 1. Use `packer` to build the Google Compute Engine VM image:
 
   ```sh
-  packer build -var project_id=${PROJECT_ID} packer.json
+  $ packer build -var project_id=${PROJECT_ID} packer.json
   ```
 
 1. Copy the ID of the image created:
@@ -348,27 +370,18 @@ In this hands-on section, you will use Packer to build the VM image for the fron
 1. Create a frontend instance with a public IP address and the `http-server` tag that will open port 80. Be sure to replace `YOUR_FRONTEND_IMAGE_ID` with the output of the previous step:
 
   ```shell
-  gcloud compute instances create frontend \
+  $ gcloud compute instances create frontend \
     --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
     --zone=us-central1-f \
     --tags=http-server \
     --image=YOUR_FRONTEND_IMAGE_ID
   ```
 
-1. The details of the instance will be output when the create operation succeeds, and will look similar to the following. Copy the EXTERNAL_IP of your frontend instance:
+1. The details of the instance will be output when the create operation succeeds, and will look similar to the following:
 
   ```shell
   NAME     ZONE          MACHINE_TYPE  PREEMPTIBLE INTERNAL_IP EXTERNAL_IP   STATUS
   frontend us-central1-f n1-standard-1             10.240.0.10 104.197.14.97 RUNNING
-  ```
-
-1. Add a firewall rule to allow access to the Consul UI:
-
-  ```shell
-  gcloud compute firewall-rules create consul-ui \
-    --source-ranges=0.0.0.0/0 \
-    --target-tags=consul-ui \
-    --allow=TCP:8500
   ```
 
 1. Copy the value for `EXTERNAL_IP` and open it in your browser to view the frontend application. You should see an interface similar to this:
