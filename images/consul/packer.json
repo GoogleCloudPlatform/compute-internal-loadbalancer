@@ -35,7 +35,7 @@
     {
       "type": "file",
       "source": "consul_servers.sh",
-      "destination": "/usr/bin/consul_servers.sh"
+      "destination": "/usr/local/bin/consul_servers.sh"
     },
     {
       "type": "file",
@@ -52,7 +52,7 @@
         "wget -O consul.zip {{user `consul_url`}}",
         "unzip consul.zip -d /usr/local/bin/",
 
-        "chmod +x /usr/bin/consul_servers.sh",
+        "chmod +x /usr/local/bin/consul_servers.sh",
     
         "# Enable consul",
         "systemctl enable consul_servers.service",
