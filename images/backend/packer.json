@@ -63,8 +63,7 @@
 
             "# Get and install consul and consul-template",
             "wget -O consul.zip {{user `consul_url`}}",
-            "unzip consul.zip",
-            "mv consul /usr/bin",
+            "unzip consul.zip -d /usr/local/bin/",
 
             "chmod +x /opt/www/gceme",
             "chmod +x /usr/bin/consul_servers.sh",

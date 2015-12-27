@@ -1,0 +1,12 @@
+[Unit]
+Description=frontend
+After=consul_servers.service
+Requires=consul_servers.service
+
+[Service]
+EnvironmentFile=/etc/consul-servers
+ExecStart=/usr/bin/frontend-start.sh
+LimitNOFILE=9999999
+
+[Install]
+WantedBy=multi-user.target

@@ -48,10 +48,13 @@ To support service registration and discovery, you must run at least one Consul 
   gcloud compute instances create tool \
     --scopes=cloud-platform \
     --zone=us-central1-f \
+    --image=debian-8 \
     --metadata "startup-script=apt-get update -y && \
       apt-get install -y git unzip && \
       curl -o /tmp/packer.zip https://releases.hashicorp.com/packer/0.8.6/packer_0.8.6_linux_amd64.zip && \
-      sudo unzip /tmp/packer.zip -d /usr/local/bin/" 
+      curl -O /tmp/consul.zip https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip && \
+      sudo unzip /tmp/packer.zip -d /usr/local/bin/ && \
+      sudo unzip /tmp/consul.zip -d /usr/local/bin/"
   ```
 
 1. Connect to the new `tool` instance:
@@ -63,7 +66,7 @@ To support service registration and discovery, you must run at least one Consul 
 1. Clone the source code repository to the `tool` instance:
 
   ```sh
-  git clone https://github.com/evandbrown/compute-internal-loadbalancer.git
+  git clone https://github.com/GoogleCloudPlatform/compute-internal-loadbalancer.git
   ```
 
 1. Set an environment variable containing your project ID:
@@ -101,35 +104,279 @@ To support service registration and discovery, you must run at least one Consul 
     --image=YOUR_CONSUL_IMAGE_ID
   ```
 
-## The HAProxy load balancer
-Lorem ipsum
+## The backend application
+The backend application in this example is a simple microservice that returns the [instance metadata](https://cloud.google.com/compute/docs/metadata?hl=en) of the Google Compute Engine instance it is running. The instance metadata is returned as a JSON string in response to an HTTP Get request. Instances running the backend application have a private IP address but no public address. The source for the sample application is located [on GitHub](https://github.com/GoogleCloudPlatform/continuous-deployment-on-kubernetes/tree/master/sampleapp/gceme).
 
-### Hands-on: Launch HAProxy load balancers
-  gcloud compute instance-templates create haproxy \
-    --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
-    --no-address \
-    --image=YOUR_HAPROXY_IMAGE_ID 
-  
-  gcloud compute instance-groups managed create haproxy \
-    --base-instance-name=haproxy \
-    --template=haproxy \
-    --zone=us-central1-f \
-    --size=2
+### Bootstrapping the backend
+When a VM running the backend application comes online, it must join an existing Consul cluster, register itself as a service with the cluster, then start the application process to respond to HTTP requests. 2 systemd units - `consul_servers.service` and `backend.service` - are responsible for this bootstrapping.
 
-## The Backend aplication
-Lorem ipsum
+1. `consul_servers.service`: this unit invokes the `consul_servers.sh` shell script, which retrieves the names of the Consul servers from the instance's metadata store and writes them to the file `/etc/consul-servers`. Consul servers must already be running, and the backend servers must be launched with a metadata attributed named `consul_servers` whose value is a comma-delimited list of Consul server names. Here is the unit file:
 
-### Hands-on: Launch HAProxy load balancers
+  ```
+  [Unit]
+  Description=consul_servers
+
+  [Service]
+  Type=oneshot
+  ExecStart=/bin/sh -c "/usr/bin/consul_servers.sh > /etc/consul-servers"
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+2. `backend.service`: this unit runs after `consul_servers.service`. It reads Consul server names from `/etc/consul-servers`, then runs the `backend-start.sh` script. This script creates a Consul service file, then joins the cluster and registers the service, and finally starts the backend application. Here is the `backend.service` unit file:
+
+  ```
+  [Unit]
+  Description=backend
+  After=consul_servers.service
+  Requires=consul_servers.service
+
+  [Service]
+  EnvironmentFile=/etc/consul-servers
+  ExecStart=/usr/bin/backend-start.sh
+  LimitNOFILE=9999999
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+  Here is the `backend-start.sh` script:
+
+  ```sh
+  #! /bin/bash
+  export zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
+
+  # Set zone in Consul and HAProxy files
+  envsubst < "/etc/consul.d/backend.json.tpl" > "/etc/consul.d/backend.json"
+
+  # Start consul
+  consul agent -data-dir /tmp/consul -config-dir /etc/consul.d $CONSUL_SERVERS &
+            
+  # Start the microservice
+  /opt/www/gceme -port=8080
+  ```
+
+### The backend Consul service
+Here is the `/etc/consul.d/backend.json` service file generated when the `backend.service` service is started:
+
+```json
+{
+  "service": {
+    "name": "backend", 
+    "tags": ["us-central1-f"],
+    "port": 8080
+  }
+}
+```
+
+When the Consul agent starts on a backend server, that server will be registered with the Consul cluster as a `backend` service with the availability zone it is running in as a tag. Members of the service can be discovered by resolving the DNS name `backend.service.consul.`. To find service members in a specific availability zone, prepend the tag to the name: `us-central1-f.backend.service.consul.`
+
+### Hands-on: Launch the backend service
+In this hands-on section, you will use Packer to build the VM image for the backend service, then use an [instance group](https://cloud.google.com/compute/docs/instance-groups/) to create and manage a cluster of backend servers:
+
+1. On your tools instance, `cd` to the directory containing the backend image files:
+
+  ```sh
+  cd compute-internal-loadbalancer/images/backend
+  ```
+
+1. Use `packer` to build the Google Compute Engine VM image for the Consul servers:
+
+  ```sh
+  packer build -var project_id=${PROJECT_ID} packer.json
+  ```
+
+1. Copy the ID of the image created:
+
+  ```sh
+  ==> Builds finished. The artifacts of successful builds are:
+  --> googlecompute: A disk image was created: backend-1450847630
+  ```
+
+1. Create an [instance template](https://cloud.google.com/compute/docs/instance-templates) that describes the configuration of the backend servers, being sure to replace `YOUR_BACKEND_IMAGE_ID` with the output of the previous step:
+
+  ```sh
   gcloud compute instance-templates create backend \
-    --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
     --no-address \
+    --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
     --image=YOUR_BACKEND_IMAGE_ID
+  ```
 
+1. Create an [instance group](https://cloud.google.com/compute/docs/instance-groups/) that will launch 2 backend servers using the backend template:
+
+  ```sh
   gcloud compute instance-groups managed create backend \
     --base-instance-name=backend \
     --template=backend \
-    --zone=us-central1-f \
-    --size=2
+    --size=2 \
+    --zone=us-central1-f
+  ```
 
+
+## The HAProxy load balancer tier
+HAProxy is used to load balance requests to the backend servers. When a VM running HAProxy comes online, it must join an existing Consul cluster, register itself as a service with the cluster, discover the servers in the backend service, then start HAProxy. Like the backend servers, the HAProxy servers will only have private IP addresses and will not be accessible to the public Internet.
+
+### The HAProxy Consul service
+The service registered with Consul by each HAProxy server is named `haproxy-internal` and is defined as follows:
+
+```json
+{
+  "service": {
+    "name": "haproxy-internal",
+    "tags": ["us-central1-f"],
+    "port": 8080
+  }
+}
+```
+
+Like the earlier backend service, the `haproxy-internal` service is tagged with the availability zone the instances are running in. This will allow the frontend application to connect to any load balancer using the `haproxy-internal.service.consul` name, and will also allow zone-specific lookups by prepending a particular zone to the lookup name, for example `us-central1-f.haproxy-internal.service.consul` will only return service members in the `us-central1-f` availability zone.
+
+### Discovering servers in the backend service with `consul-template`
+To load balance requests the HAProxy servers need to know the IP address of all healthy backend servers. This solution uses `consul-template` to update HAProxy's configuration file (`/etc/haproxy/haproxy.cfg`) and reload the HAProxy service every time the membership of the backend service changes. This snippet of the `haproxy.cfg` template file shows the zone-specific `us-central1-f.backend` service being iterated and writing `server` directives that indicate available servers to HAProxy:
+
+```
+listen http-in
+        bind *:8080{{range service "us-central1-f.backend"}}
+        server {{.Node}} {{.Address}}:{{.Port}}{{end}}  
+```
+
+`consul-template` is executed by systemd (see the `consul_template.service` unit file for more detail) as follows:
+
+`consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s -max-stale 5s -wait 5s`
+
+### Hands-on: Launch HAProxy load balancers
+In this hands-on section, you will use Packer to build the VM image for the HAProxy load balancer servers, then use an [instance group](https://cloud.google.com/compute/docs/instance-groups/) to create and manage a cluster of servers:
+
+1. On your tools instance, `cd` to the directory containing the HAProxy image files:
+
+  ```sh
+  cd compute-internal-loadbalancer/images/haproxy
+  ```
+
+1. Use `packer` to build the Google Compute Engine VM image:
+
+  ```sh
+  packer build -var project_id=${PROJECT_ID} packer.json
+  ```
+
+1. Copy the ID of the image created:
+
+  ```sh
+  ==> Builds finished. The artifacts of successful builds are:
+  --> googlecompute: A disk image was created: haproxy-1450847630
+  ```
+
+1. Create an [instance template](https://cloud.google.com/compute/docs/instance-templates) that describes the configuration of the backend servers, being sure to replace `YOUR_HAPROXY_IMAGE_ID` with the output of the previous step:
+
+  ```sh
+  gcloud compute instance-templates create haproxy \
+    --no-address \
+    --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
+    --image=YOUR_HAPROXY_IMAGE_ID
+```
+
+1. Create an [instance group](https://cloud.google.com/compute/docs/instance-groups/) that will launch 2 HAProxy servers:
+
+  ```sh
+  gcloud compute instance-groups managed create haproxy \
+    --base-instance-name=haproxy \
+    --template=haproxy \
+    --size=2 \
+    --zone=us-central1-f
+  ```
+
+## The Frontend aplication
+The frontend application in this example consumes the JSON output from the backend (via the HAProxy load balancers) and renders it as HTML:
+
+![]()
+
+Instances running the frontend application have a public and private IP address. They can receive requests from the public Internet, and make requests to the HAProxy servers via private IP addresses. The source for the sample application is the same as the backend and is available [on GitHub](https://github.com/GoogleCloudPlatform/continuous-deployment-on-kubernetes/tree/master/sampleapp/gceme).
+
+### Connecting the frontend to the backend
+The frontend application accepts the location of the backend as a runtime flag:
+
+```sh
+gceme -frontend=true -backend-service=http://BACKEND_SERVICE_ADDRESS:PORT
+```
+
+The frontend servers are also members of the Consul cluster, so they can easily discover the HAProxy service via DNS and provide that service name as the value to the `backend-service` flag when the frontend process is started:
+
+```sh
+gceme -frontend=true -backend-service=http://us-central1-f.haproxy-internal.service.consul:8080
+```
+
+### Consul service discovery with DNS and Dnsmasq
+[Dnsmasq](http://www.thekelleys.org.uk/dnsmasq/doc.html) is installed on the frontend servers and `/etc/resolv.conf` is modified to include `127.0.0.1` as a nameserver, allowing dnsmasq to resolve queries for the `.consul` TLD. `consul-template` is then used to render a second hosts file - `/etc/hosts.consul` - that contains the hostnames and addresses of load balancers in the HAProxy service. The `consul-template` file to generate `/etc/hosts.consul` is:
+
+```
+{{range service "$zone.haproxy-internal"}}
+{{.Address}} $zone.{{.Name}} $zone.{{.Name}}.service.consul{{end}}
+```
+
+`consul-template` renders this file and restarts the dnsmasq service whenever HAProxy servers are added or removed from their instance group. A rendered `/etc/hosts.consul` looks like:
+
+```
+10.240.0.8 us-central1-f.haproxy-internal us-central1-f.haproxy-internal.service.consul
+10.240.0.9 us-central1-f.haproxy-internal us-central1-f.haproxy-internal.service.consul 
+```
+
+Finally, dnsmasq is configured to use this additional hosts file and is able to answers resolution requests for `haproxy-internal.service.consul` from the frontend application. Complete details of the instance configuration are available in the `images/frontend` directory.
+
+### Hands-on: Launch the frontend application
+In this hands-on section, you will use Packer to build the VM image for the frontend servers, then launch a single frontend instance with a public IP address.
+
+1. On your tools instance, `cd` to the directory containing the frontend image files:
+
+  ```sh
+  cd compute-internal-loadbalancer/images/frontend
+  ```
+
+1. Use `packer` to build the Google Compute Engine VM image:
+
+  ```sh
+  packer build -var project_id=${PROJECT_ID} packer.json
+  ```
+
+1. Copy the ID of the image created:
+
+  ```sh
+  ==> Builds finished. The artifacts of successful builds are:
+  --> googlecompute: A disk image was created: frontend-1450847630
+  ```
+
+1. Create a frontend instance with a public IP address and the `http-server` tag that will open port 80. Be sure to replace `YOUR_FRONTEND_IMAGE_ID` with the output of the previous step:
+
+  ```shell
+  gcloud compute instances create frontend \
+    --metadata="^|^consul_servers=consul-1,consul-2,consul-3" \
+    --zone=us-central1-f \
+    --tags=http-server \
+    --image=YOUR_FRONTEND_IMAGE_ID
+  ```
+
+1. The details of the instance will be output when the create operation succeeds, and will look similar to the following. Copy the EXTERNAL_IP of your frontend instance:
+
+  ```shell
+  NAME     ZONE          MACHINE_TYPE  PREEMPTIBLE INTERNAL_IP EXTERNAL_IP   STATUS
+  frontend us-central1-f n1-standard-1             10.240.0.10 104.197.14.97 RUNNING
+  ```
+
+1. Add a firewall rule to allow access to the Consul UI:
+
+  ```shell
+  gcloud compute firewall-rules create consul-ui \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=consul-ui \
+    --allow=TCP:8500
+  ```
+
+1. Copy the value for `EXTERNAL_IP` and open it in your browser to view the frontend application. You should see an interface similar to this:
+
+  ![](static/img/frontend.png)
+
+1. Refresh the page several times and notice that different backends are serving the request.
+
+## Simulate HAProxy and backend server failuresjkk
 
 

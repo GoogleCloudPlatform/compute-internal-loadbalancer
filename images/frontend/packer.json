@@ -1,0 +1,100 @@
+{
+  "variables": {
+    "account_file": "",
+    "project_id": "null",
+    "consul_url": "https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip",
+    "consul_template_url": "https://releases.hashicorp.com/consul-template/0.12.0/consul-template_0.12.0_linux_amd64.zip",
+    "consul_web_ui_url": "https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_web_ui.zip"
+  },
+  "builders": [
+    {
+      "type": "googlecompute",
+      "account_file": "{{user `account_file`}}",
+      "project_id": "{{user `project_id`}}",
+      "source_image": "debian-8-jessie-v20150818",
+      "zone": "us-central1-f",
+      "image_name": "frontend-{{timestamp}}"
+    }
+  ],
+  "provisioners": [
+      {
+        "type": "shell",
+        "inline": [
+          "# Make a dir we need",
+          "mkdir -p /etc/consul.d",
+          "mkdir -p /etc/dnsmasq.d",
+          "mkdir -p /opt/www"
+        ]
+      },
+      {
+        "type": "file",
+        "source": "dns-config.json",
+        "destination": "/etc/consul.d/dns-config.json"
+      },
+      {
+        "type": "file",
+        "source": "hosts.consul.ctmpl.tpl",
+        "destination": "/etc/hosts.consul.ctmpl.tpl"
+      },
+      {
+        "type": "file",
+        "source": "gceme",
+        "destination": "/opt/www/gceme"
+      },
+      {
+        "type": "file",
+        "source": "consul_servers.service",
+        "destination": "/etc/systemd/system/consul_servers.service"
+      },
+      {
+        "type": "file",
+        "source": "consul_servers.sh",
+        "destination": "/usr/bin/consul_servers.sh"
+      },
+
+      {
+        "type": "file",
+        "source": "frontend.service",
+        "destination": "/etc/systemd/system/frontend.service"
+      },
+      {
+        "type": "file",
+        "source": "frontend-start.sh",
+        "destination": "/usr/bin/frontend-start.sh"
+      },
+      {
+      "type": "shell",
+      "inline": [
+            "#! /bin/bash",
+            "apt-get update -y",
+            "apt-get install -y unzip jq dnsutils dnsmasq",
+
+            "# Get and install consul, consul-template, and consul web UI",
+            "wget -O consul.zip {{user `consul_url`}}",
+            "wget -O consul-template.zip {{user `consul_template_url`}}",
+            "wget -O consul-ui.zip {{user `consul_web_ui_url`}}",
+            "unzip consul.zip -d /usr/local/bin/",
+            "unzip consul-template.zip -d /usr/local/bin/",
+            "unzip consul-ui.zip -d /usr/local/lib/consul-ui/",
+
+            "chmod +x /opt/www/gceme",
+            "chmod +x /usr/bin/consul_servers.sh",
+            "chmod +x /usr/bin/frontend-start.sh",
+
+            "systemctl enable consul_servers.service",
+            "systemctl enable frontend.service",
+            "systemctl enable dnsmasq"
+      ]
+    },
+    {
+      "type": "file",
+      "source": "10-consul",
+      "destination": "/etc/dnsmasq.d/10-consul"
+    },
+    {
+      "type": "file",
+      "source": "dnsmasq.conf",
+      "destination": "/etc/dnsmasq.conf"
+    }
+  ]
+}

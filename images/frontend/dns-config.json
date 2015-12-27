@@ -1,0 +1,1 @@
+{ "dns_config": { "allow_stale": true, "node_ttl": "20s", "service_ttl": { "*": "20s"} } }
