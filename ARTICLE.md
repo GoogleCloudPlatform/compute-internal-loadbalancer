@@ -21,17 +21,17 @@ In this solution we extend the previous configuration to support autoscaling bot
 |Google Cloud Platform Managed Instance Groups and Autoscaler| A managed instance group is a pool of homogeneous instances, created from a common instance template. An autoscaler adds or remove instances from a managed instance group. |
 
 ## What you will learn
-Each of the following sections discusses a specific aspect of the architecture diagram you just saw, and includes hands-on instructions for provisioning that section on Google Compute Engine. By the end of the document you will have learned about each section of the architecture in detail, and have it running and usable in your environment! At the end of the document, the entire solution is presented as a Deployment Manager template, allowing you to provision the entire exercise with just one API call.
+Each of the following sections discusses a specific aspect of the architecture diagram you just saw, and includes hands-on instructions for provisioning that section on Google Compute Engine. By the end of the document you will have learned about each section of the architecture in detail, and have it running and usable in your environment. 
 
 ### What you need
 If you want to complete the tutorial as you read along, you’ll need just two things:
 * A Google Cloud Platform account
-* A new Google Cloud Platform project (create one at [https://console.developers.google.com/project)
+* A new Google Cloud Platform project (create one at [https://console.developers.google.com/project](https://console.developers.google.com/project)
 
 ## The Consul cluster
-Consul is used for service discovery in this architecture. When the instances running HAProxy boot, they register with a Consul service named `haproxy-internal`, and the frontend server can discover all of the HAProxy servers with a DNS query to Consul. Similarly, instances running the backend application register with a Consul service named `api-internal` and can be discovered by the HAProxy servers.
+Consul is used for service registration and discovery in this architecture. When the instances running HAProxy boot, they register with a Consul service named `haproxy-internal`, and the frontend server can discover all of the HAProxy servers with a DNS query to Consul. Similarly, instances running the backend application register with a Consul service named `backend` and can be discovered by the HAProxy servers.
 
-To support service registration and discovery, you must run at least one Consul server. The makers of consul [strongly recommend](https://consul.io/docs/guides/bootstrapping.html) running 3-5 Consul servers per datacenter. Examples in this document will recommend running 3 Consul servers.
+To support service registration and discovery, you must run at least one Consul server. The makers of Consul [strongly recommend](https://consul.io/docs/guides/bootstrapping.html) running 3-5 Consul servers per datacenter. Examples in this document will recommend running 3 Consul servers.
 
 ### Hands-on: Launch Consul servers
 1. Create a [new Google Cloud Platform Project](https://console.developers.google.com/project)
@@ -118,12 +118,11 @@ To support service registration and discovery, you must run at least one Consul 
 
   ```sh
   $ consul members
-      2015/12/27 19:45:51 [INFO] agent.rpc: Accepted client: 127.0.0.1:60140
-      Node          Address           Status  Type    Build  Protocol  DC
-      consul-1      10.240.0.5:8301   alive   server  0.6.0  2         dc1
-      consul-2      10.240.0.3:8301   alive   server  0.6.0  2         dc1
-      consul-3      10.240.0.4:8301   alive   server  0.6.0  2         dc1
-      tool          10.240.0.2:8301   alive   client  0.6.0  2         dc1
+    Node          Address           Status  Type    Build  Protocol  DC
+    consul-1      10.240.0.5:8301   alive   server  0.6.0  2         dc1
+    consul-2      10.240.0.3:8301   alive   server  0.6.0  2         dc1
+    consul-3      10.240.0.4:8301   alive   server  0.6.0  2         dc1
+    tool          10.240.0.2:8301   alive   client  0.6.0  2         dc1
   ```
 
 ## The backend application
@@ -311,7 +310,7 @@ In this hands-on section, you will use Packer to build the VM image for the HAPr
 ## The Frontend aplication
 The frontend application in this example consumes the JSON output from the backend (via the HAProxy load balancers) and renders it as HTML:
 
-![]()
+![](static/img/frontend.png)
 
 Instances running the frontend application have a public and private IP address. They can receive requests from the public Internet, and make requests to the HAProxy servers via private IP addresses. The source for the sample application is the same as the backend and is available [on GitHub](https://github.com/GoogleCloudPlatform/continuous-deployment-on-kubernetes/tree/master/sampleapp/gceme).
 
@@ -384,12 +383,95 @@ In this hands-on section, you will use Packer to build the VM image for the fron
   frontend us-central1-f n1-standard-1             10.240.0.10 104.197.14.97 RUNNING
   ```
 
-1. Copy the value for `EXTERNAL_IP` and open it in your browser to view the frontend application. You should see an interface similar to this:
-
-  ![](static/img/frontend.png)
+1. Copy the value for `EXTERNAL_IP` and open it in your browser to view the frontend application.
 
 1. Refresh the page several times and notice that different backends are serving the request.
 
-## Simulate HAProxy and backend server failuresjkk
+## Autoscale and handle failure
+When you launch an instance using the HAProxy image you made, it registers itself automatically with Consul and is discoverable by frontend instances via DNS. Similarly, if an HAProxy instance fails Consul detects this, frontends are notified (via consul-template restarting dnsmasq) and requests are no longer routed through the failed instance. Because these instances bootstrap, are discoverable, and fail gracefully, it is a simple task to add a [Google Compute Engine Autoscaler](https://cloud.google.com/compute/docs/autoscaler/) to automatically add or remove load balancing capacity based on utilization.
 
+### Hands-on: Simulate an HAProxy load balancer failure
+The HAProxy instance group you created previously had 2 instances in the group. You can resize the group to 1 to simulate the failure of one of the instances:
 
+```sh
+$ gcloud compute instance-groups managed resize haproxy --size=1
+```
+
+The instance group manager will choose a random instance to terminate. A notification should appear from Consul in your `tool` terminal indicating a failure:
+
+```sh
+2015/12/27 20:00:43 [INFO] memberlist: Suspect haproxy-gg94 has failed, no acks received
+2015/12/27 20:00:44 [INFO] serf: EventMemberFailed: haproxy-gg94 10.240.0.8
+```
+
+The failed instance is no longer a member of the service, and the frontend servers were updated to exclude it.
+
+You can run `consul members` to view the HAProxy instance that was terminated. You should see output similar to this:
+
+```sh
+$ consul members
+Node          Address           Status  Type    Build  Protocol  DC
+backend-lfwe  10.240.0.6:8301   alive   client  0.6.0  2         dc1
+backend-mq5c  10.240.0.7:8301   alive   client  0.6.0  2         dc1
+consul-1      10.240.0.5:8301   alive   server  0.6.0  2         dc1
+consul-2      10.240.0.3:8301   alive   server  0.6.0  2         dc1
+consul-3      10.240.0.4:8301   alive   server  0.6.0  2         dc1
+frontend      10.240.0.10:8301  alive   client  0.6.0  2         dc1
+haproxy-gg94  10.240.0.8:8301   failed  client  0.6.0  2         dc1
+haproxy-tm64  10.240.0.9:8301   alive   client  0.6.0  2         dc1
+tool          10.240.0.2:8301   alive   client  0.6.0  2         dc1
+```
+
+### Hands-on: Enable HAProxy autoscaling
+Autoscaling can be enabled for an existing instance group. The autoscaler supports scaling based on CPU utilization, [custom metrics](https://cloud.google.com/monitoring/api/metrics), or both. In this example, you will configure the autoscaler to add capacity when either the aggregate CPU utilization of the HAProxy servers is more than 70%, or when the network input exceeds 1Gbps.
+
+> **Important note about choosing metrics:** CPU or network throughput may not be the best scaling indicators for your workload. Use [Google Cloud Monitoring](https://cloud.google.com/monitoring/) and this [Distributed Load Testing](https://cloud.google.com/solutions/distributed-load-testing-using-kubernetes) solution to generate load for your system and understand the correct metric(s) to scale on.
+
+Enable autoscaling for the HAProxy server group with the following command:
+
+```shell
+$ gcloud compute instance-groups managed set-autoscaling haproxy \
+  --zone=us-central1-f \
+  --min-num-replicas=2 \
+  --max-num-replicas=8 \
+  --scale-based-on-cpu \
+  --target-cpu-utilization=.7 \
+  --custom-metric-utilization="metric=compute.googleapis.com/instance/network/received_bytes_count,utilization-target=1000000000,utilization-target-type=DELTA_PER_SECOND"
+```
+
+## Cleaning up
+After you've finished the HAProxy tutorial, you can clean up the resources you created on Google Cloud Platform so you won't be billed for them in the future. The following sections describe how to delete or turn off these resources.
+
+### Deleting the project
+The easiest way to eliminate billing is to delete the project you created for the tutorial.
+
+> Warning: Deleting a project has the following consequences:
+> 
+> If you used an existing project, you'll also delete any other work you've done in the project.
+You can't reuse the project ID of a deleted project. If you created a custom project ID that you plan to use in the future, you should delete the resources inside the project instead. This ensures that URLs that use the project ID, such as an appspot.com URL remain available. If you used the automatically generated project ID, this may not be a concern.
+To delete the project, in the Google Cloud Platform Console, use the Projects page. Click the trashcan to the right of the project name.
+
+### Deleting instances groups
+You can use the Cloud Platform Console to delete instance groups. Select the check boxes for the `backend` and `haproxy` instance groups, then click Delete.
+
+### Deleting instances 
+You can use the Cloud Platform Console to stop or delete Compute Engine instances. Select the check boxes and then click Stop or Delete.
+
+### Deleting disks
+You can use the Cloud Platform Console to delete persistent disks. Select the check boxes and then click Delete. Note that you cannot delete a disk that is in use by an instance. First shut down or delete the instance that is using the disk and then delete the disk.
+
+### Deleting images
+You can use the Cloud Platform Console to delete images. Select the check boxes and then click Delete.
+
+## Next Steps
+You've now seen how to create a scalable, resilient internal load balancing solution by using HAProxy and Consul on Compute Engine instances that runs in a private network. You've also seen how service discovery works to enable registration and discovery of both the load balancing tier and its clients.
+
+You can extend or modify this solution to support different backend applications such as database servers or key-value stores. 
+
+For information about how to load test your internal load balancer, see [Distributed Load Testing Using Kubernetes](https://cloud.google.com/solutions/distributed-load-testing-using-kubernetes).
+
+Read about other load balancing solutions available on Google Cloud Platform:
+
+* [Network Load Balancing](https://cloud.google.com/compute/docs/load-balancing/network/)
+* [HTTP/HTTPS Load Balancing](https://cloud.google.com/compute/docs/load-balancing/http/)
+* Try out other Google Cloud Platform features for yourself. Have a look at our [tutorials]().
