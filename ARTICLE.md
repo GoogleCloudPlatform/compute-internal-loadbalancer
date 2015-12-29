@@ -394,7 +394,7 @@ When you launch an instance using the HAProxy image you made, it registers itsel
 The HAProxy instance group you created previously had 2 instances in the group. You can resize the group to 1 to simulate the failure of one of the instances:
 
 ```sh
-$ gcloud compute instance-groups managed resize haproxy --size=1
+$ gcloud compute instance-groups managed resize haproxy --zone=us-central1-f --size=1
 ```
 
 The instance group manager will choose a random instance to terminate. A notification should appear from Consul in your `tool` terminal indicating a failure:

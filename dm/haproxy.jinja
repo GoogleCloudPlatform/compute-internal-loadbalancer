@@ -14,6 +14,7 @@
 
 {% set HAPROXY_INSTANCE_TEMPLATE =  env["name"] + "-it"  %}
 {% set HAPROXY_INSTANCE_GROUP =   env["name"] + "-ig" %}
+{% set HAPROXY_AUTOSCALER =  env["name"] + "-as" %}
 
 resources:
 - name: {{ HAPROXY_INSTANCE_TEMPLATE }}
@@ -40,20 +41,8 @@ resources:
         - haproxy
       metadata:
         items:
-        - key: startup-script
-          value: |
-            #! /bin/bash
-            export zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
-
-            # Set zone in Consul and HAProxy files
-            envsubst < "/etc/consul.d/haproxy-internal-service.json" > "/etc/consul.d/haproxy-internal-service.json.new" && mv /etc/consul.d/haproxy-internal-service.json.new /etc/consul.d/haproxy-internal-service.json
-            envsubst < "/etc/haproxy/haproxy.ctmpl" > "/etc/haproxy/haproxy.ctmpl.new" && mv /etc/haproxy/haproxy.ctmpl.new /etc/haproxy/haproxy.ctmpl
-
-            # Register service
-            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
-                      
-            # Generate haproxy config
-            consul-template -template "/etc/haproxy/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:service haproxy restart" -retry 30s -max-stale 5s -wait 5s &
+        - key: consul_servers
+          value: {{ properties["consul_servers"] }}
 
 {% for zone in properties["zones"] %}
 # Instance Group Manager for internal HAProxy
@@ -61,8 +50,21 @@ resources:
   type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["haproxy_servers"] }}
-    size: {{ properties["zones"][zone]["haproxy_servers_size"] }}
+    targetSize: {{ properties["zones"][zone]["min_haproxy_servers"] }}
+    size: {{ properties["zones"][zone]["min_haproxy_servers"] }}
     baseInstanceName: {{ env["name"] }}
     instanceTemplate: $(ref.{{ HAPROXY_INSTANCE_TEMPLATE }}.selfLink)
+    
+# Autoscaler
+- name: {{ HAPROXY_AUTOSCALER + "-" + zone}}
+  type: compute.v1.autoscaler
+  properties:
+    zone: {{ zone }}
+    target: $(ref.{{ HAPROXY_INSTANCE_GROUP + "-" + zone }}.selfLink)
+    autoscalingPolicy:
+      maxNumReplicas: {{ properties["zones"][zone]["max_haproxy_servers"] }}
+      minNumReplicas: {{ properties["zones"][zone]["min_haproxy_servers"] }}
+      loadBalancingUtilization:
+        utilizationTarget: .8
+
 {% endfor %}

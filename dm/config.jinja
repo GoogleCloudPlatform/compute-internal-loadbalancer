@@ -4,60 +4,58 @@
 #you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
+#    http://www.apache.org/licenses/LICENSE-2.0 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{% set API = "internal-api-" + env["deployment"] %}
+{% set BACKEND = "backend-" + env["deployment"] %}
 {% set HAPROXY = "haproxy-" + env["deployment"] %}
 {% set CONSUL = "consul-" + env["deployment"] %}
-{% set WWW = "www-" + env["deployment"] %}
+{% set FRONTEND = "frontend-" + env["deployment"] %}
 
 # Construct args for consul agent to join cluster
-{% set CONSUL_ARGS_LIST = [] %}
-{% set _ = CONSUL_ARGS_LIST.append("-retry-max 10") %}
-{% set _ = CONSUL_ARGS_LIST.append("-retry-interval 30s") %}
+{% set CONSUL_SERVERS= [] %}
 {% for zone in properties["zones_to_use"]%}
-{% set _ = CONSUL_ARGS_LIST.append("-retry-join " + CONSUL + "-" + zone) %}
+{% set _ = CONSUL_SERVERS.append(CONSUL + "-" + zone) %}
 {% endfor %}
-{% set CONSUL_ARGS_STRING = CONSUL_ARGS_LIST|join(' ') %}
+{% set CONSUL_SERVERS_STRING = CONSUL_SERVERS|join(',') %}
 
 resources:
 - name: {{ CONSUL }}
   type: consul.jinja
   properties:
     machine_type: {{ properties["machine_type"]["consul"] }}
-    image: {{ properties["image"] }}
-    consul_args: {{ CONSUL_ARGS_STRING }}
+    image: {{ "https://www.googleapis.com/compute/v1/projects/" + env["project"] + "/global/images/" + properties["consul_image"] }}
     zones: {{ properties["zones_to_use"] }}
+    consul_servers: {{ CONSUL_SERVERS_STRING }}
 
 - name: {{ HAPROXY }}
   type: haproxy.jinja
   properties:
     machine_type: {{ properties["machine_type"]["haproxy"] }}
-    image: {{ properties["haproxy_image"] }}
-    consul_args: {{ CONSUL_ARGS_STRING }}
+    image: {{ "https://www.googleapis.com/compute/v1/projects/" + env["project"] + "/global/images/" + properties["haproxy_image"] }}
     zones: {{ properties["zones"] }}
+    consul_servers: {{ CONSUL_SERVERS_STRING }}
+    ref:  $(ref.{{ CONSUL + "-us-central1-f" }}.selfLink)
 
-- name: {{ API }}
-  type: api-internal.jinja
+- name: {{ BACKEND }}
+  type: backend.jinja
   properties:
-    machine_type: {{ properties["machine_type"]["api"] }}
-    image: {{ properties["internal_api_image"] }}
-    consul_args: {{ CONSUL_ARGS_STRING }}
+    machine_type: {{ properties["machine_type"]["backend"] }}
+    image: {{ "https://www.googleapis.com/compute/v1/projects/" + env["project"] + "/global/images/" + properties["backend_image"] }}
     zones: {{ properties["zones"] }}
-    backend_app_bin: {{ properties["backend_app_bin"] }}
+    consul_servers: {{ CONSUL_SERVERS_STRING }}
+    ref:  $(ref.{{ CONSUL + "-us-central1-f" }}.selfLink)
 
-- name: {{ WWW }}
-  type: www-frontend.jinja
+- name: {{ FRONTEND }}
+  type: frontend.jinja
   properties:
-    machine_type: {{ properties["machine_type"]["www"] }}
-    image: {{ properties["image"] }}
-    consul_args: {{ CONSUL_ARGS_STRING }}
+    machine_type: {{ properties["machine_type"]["frontend"] }}
+    image: {{ "https://www.googleapis.com/compute/v1/projects/" + env["project"] + "/global/images/" + properties["frontend_image"] }}
     zones: {{ properties["zones"] }}
     region: {{ properties["region"] }}
-    backend_app_bin: {{ properties["backend_app_bin"] }}          
+    consul_servers: {{ CONSUL_SERVERS_STRING }}
+    ref:  $(ref.{{ CONSUL + "-us-central1-f" }}.selfLink)

@@ -41,21 +41,7 @@ resources:
       - consul
     metadata:
       items:
-      - key: startup-script
-        value: |
-          #! /bin/bash
-          sudo apt-get install -y unzip
+      - key: consul_servers
+        value: {{ properties["consul_servers"] }}
 
-          # Install consul
-          wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip
-          unzip 0.5.2_linux_amd64.zip
-          sudo mv consul /usr/local/bin
-
-          # Run consul
-          mkdir /etc/consul.d
-          echo '{ "dns_config": { "allow_stale": true, "node_ttl": "20s", "service_ttl": { "*": "20s"} } }' > /etc/consul.d/dns-config.json
-
-          consul agent -server -data-dir /etc/consul.d {{ properties["consul_args"] + " -bootstrap-expect " + properties["zones"]|length|string }} &
-
-          gcloud compute instances delete-access-config $(hostname) --access-config-name "External NAT" --quiet
 {% endfor %}

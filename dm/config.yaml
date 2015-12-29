@@ -16,34 +16,39 @@ imports:
   - path: config.jinja
   - path: consul.jinja
   - path: haproxy.jinja
-  - path: api-internal.jinja
-  - path: www-frontend.jinja
+  - path: backend.jinja
+  - path: frontend.jinja
 resources: 
   - 
     name: demo
     type: config.jinja
     properties: 
-      haproxy_image: https://www.googleapis.com/compute/v1/projects/your-new-project-1103/global/images/haproxy-1447792482
-      internal_api_image: https://www.googleapis.com/compute/v1/projects/your-new-project-1103/global/images/api-internal-1447788447 
-      image: https://www.googleapis.com/compute/v1/projects/debian-cloud/global/images/debian-8-jessie-v20150818
+      haproxy_image: REPLACE_WITH_YOUR_IMAGE_ID
+      backend_image: REPLACE_WITH_YOUR_IMAGE_ID
+      frontend_image: REPLACE_WITH_YOUR_IMAGE_ID
+      consul_image: REPLACE_WITH_YOUR_IMAGE_ID
       region: us-central1
-      backend_app_bin: https://storage.googleapis.com/evandbrown17/linux/gceme
-      machine_type: 
-        consul: n1-standard-1
+      machine_type:
         haproxy: n1-standard-1
-        api: n1-standard-1
-        www: n1-standard-1
-      zones_to_use: [us-central1-a, us-central1-b]
+        consul: n1-standard-1
+        backend: n1-standard-1
+        frontend: n1-standard-1
+      zones_to_use: [us-central1-f, us-central1-b, us-central1-c]
       zones: 
         us-central1-f: 
-          api_servers: 2
-          haproxy_servers: 2
-          www_servers: 2
-          max_api_servers: 10
-          min_api_servers: 0
+          backend_servers: 1
+          frontend_servers: 1
+          min_haproxy_servers: 1
+          max_haproxy_servers: 2
         us-central1-b: 
-          api_servers: 2
-          haproxy_servers: 2
-          www_servers: 2
-          max_api_servers: 10
-          min_api_servers: 0
+          backend_servers: 1
+          frontend_servers: 1
+          min_haproxy_servers: 1
+          max_haproxy_servers: 2
+        us-central1-c: 
+          backend_servers: 1
+          frontend_servers: 1
+          min_haproxy_servers: 1
+          max_haproxy_servers: 2
+
+

@@ -196,7 +196,7 @@ When the Consul agent starts on a backend server, that server will be registered
 ### Hands-on: Launch the backend service
 In this hands-on section, you will use Packer to build the VM image for the backend service, then use an [instance group](https://cloud.google.com/compute/docs/instance-groups/) to create and manage a cluster of backend servers:
 
-1. On your tools instance, `cd` to the directory containing the backend image files:
+1. On your `tool` instance, `cd` to the directory containing the backend image files:
 
   ```sh
   $ cd ~/compute-internal-loadbalancer/images/backend
@@ -269,7 +269,7 @@ listen http-in
 ### Hands-on: Launch HAProxy load balancers
 In this hands-on section, you will use Packer to build the VM image for the HAProxy load balancer servers, then use an [instance group](https://cloud.google.com/compute/docs/instance-groups/) to create and manage a cluster of servers:
 
-1. On your tools instance, `cd` to the directory containing the HAProxy image files:
+1. On your `tool` instance, `cd` to the directory containing the HAProxy image files:
 
   ```sh
   cd ~/compute-internal-loadbalancer/images/haproxy
@@ -307,7 +307,7 @@ In this hands-on section, you will use Packer to build the VM image for the HAPr
     --zone=us-central1-f
   ```
 
-## The Frontend aplication
+## The Frontend application
 The frontend application in this example consumes the JSON output from the backend (via the HAProxy load balancers) and renders it as HTML:
 
 ![](static/img/frontend.png)
@@ -347,7 +347,7 @@ Finally, dnsmasq is configured to use this additional hosts file and is able to 
 ### Hands-on: Launch the frontend application
 In this hands-on section, you will use Packer to build the VM image for the frontend servers, then launch a single frontend instance with a public IP address.
 
-1. On your tools instance, `cd` to the directory containing the frontend image files:
+1. On your `tool` instance, `cd` to the directory containing the frontend image files:
 
   ```sh
   $ cd ~/compute-internal-loadbalancer/images/frontend
@@ -462,6 +462,34 @@ You can use the Cloud Platform Console to delete persistent disks. Select the ch
 
 ### Deleting images
 You can use the Cloud Platform Console to delete images. Select the check boxes and then click Delete.
+
+## Multi-zone deployment with Google Cloud Deployment Manager
+[Deployment Manager](https://cloud.google.com/deployment-manager/overview) is an infrastructure management service that automates the creation and management of your Google Cloud Platform resources for you, freeing you up to focus on developing services and applications for your users. You can use Deployment Manager to run the entire solution in multiple availability zones in two simple steps:
+
+1. From your `tool` instance, edit the file `~/compute-internal-loadbalancer/dm/config.yaml`, inserting the image IDs for the images you created with Packer in the previous steps:
+
+  ```yaml
+        ...
+        haproxy_image: REPLACE_WITH_YOUR_IMAGE_ID
+        backend_image: REPLACE_WITH_YOUR_IMAGE_ID
+        frontend_image: REPLACE_WITH_YOUR_IMAGE_ID
+        consul_image: REPLACE_WITH_YOUR_IMAGE_ID
+        ...
+  ```
+
+1. Deploy the entire architecture with `gcloud`:
+
+  ```shell
+  $ gcloud deployment-manager deployments create internal-lb-demo \
+      --config=./compute-internal-loadbalancer/dm/config.yaml
+  ```
+
+1. As the deployment is processing, visit the [Deployment Manager console page](https://console.developers.google.com/deployments) and track its progress.
+
+1. When the deployment completes, visit the [HTTP load balancer console page](https://console.developers.google.com/networking/loadbalancing/http) and click the IP address in the Incoming Traffic columnt to access a frontend and verify the application is working.
+
+### Delete the Deployment Manager deployment
+1. `$ gcloud deployment-manager deployments delete internal-lb-demo`
 
 ## Next Steps
 You've now seen how to create a scalable, resilient internal load balancing solution by using HAProxy and Consul on Compute Engine instances that runs in a private network. You've also seen how service discovery works to enable registration and discovery of both the load balancing tier and its clients.

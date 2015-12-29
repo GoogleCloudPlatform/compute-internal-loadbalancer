@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All rights reserved.
+# Coyright 2015 Google Inc. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{% set API_INSTANCE_TEMPLATE =  env["name"] + "-it"  %}
-{% set API_INSTANCE_GROUP =   env["name"] + "-ig" %}
-{% set API_AUTOSCALER =  env["name"] + "-as" %}
+{% set BACKEND_TEMPLATE =  env["name"] + "-it"  %}
+{% set BACKEND_GROUP =   env["name"] + "-ig" %}
+
 resources:
-- name: {{ API_INSTANCE_TEMPLATE }}
+- name: {{ BACKEND_TEMPLATE }}
   type: compute.v1.instanceTemplate
   properties:
     project: {{ env["project"] }}
@@ -37,38 +37,21 @@ resources:
         - "https://www.googleapis.com/auth/compute"
       tags:
         items:
-        - api 
+        - backend 
       metadata:
         items:
-        - key: startup-script
-          value: |
-            #! /bin/bash
-            zone=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/zone" | grep -o [[:alnum:]-]*$)
-
-            # Register service
-            echo "{\"service\": {\"name\": \"api-internal\", \"tags\": [\"$zone\"], \"port\": 8080}}" > /etc/consul.d/api-internal.json
-            consul agent -data-dir /tmp/consul -config-dir /etc/consul.d {{ properties["consul_args"] }} &
+        - key: consul_servers
+          value: {{ properties["consul_servers"] }}
 
 {% for zone in properties["zones"] %}
 # Instance Group Manager for web servers
-- name: {{ API_INSTANCE_GROUP + "-" + zone }}
+- name: {{ BACKEND_GROUP + "-" + zone }}
   type: compute.v1.instanceGroupManager
   properties:
     zone: {{ zone }}
-    targetSize: {{ properties["zones"][zone]["api_servers"] }}
-    size: {{ properties["zones"][zone]["api_servers_size"] }}
+    targetSize: {{ properties["zones"][zone]["backend_servers"] }}
+    size: {{ properties["zones"][zone]["backend_servers"] }}
     baseInstanceName: {{ env["name"] }}
-    instanceTemplate: $(ref.{{ API_INSTANCE_TEMPLATE }}.selfLink)
+    instanceTemplate: $(ref.{{ BACKEND_TEMPLATE }}.selfLink)
 
-# Autoscaler
-- name: {{ API_AUTOSCALER + "-" + zone}}
-  type: compute.v1.autoscaler
-  properties:
-    zone: {{ zone }}
-    target: $(ref.{{ API_INSTANCE_GROUP + "-" + zone }}.selfLink)
-    autoscalingPolicy:
-      maxNumReplicas: {{ properties["zones"][zone]["max_api_servers"] }}
-      minNumReplicas: {{ properties["zones"][zone]["min_api_servers"] }}
-      loadBalancingUtilization:
-        utilizationTarget: .8
 {% endfor %}
