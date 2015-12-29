@@ -66,6 +66,7 @@ To support service registration and discovery, you must run at least one Consul 
 1. Clone the source code repository to the `tool` instance:
 
   ```sh
+  $ cd ~
   $ git clone https://github.com/GoogleCloudPlatform/compute-internal-loadbalancer.git
   ```
 
@@ -184,9 +185,13 @@ Here is the `/etc/consul.d/backend.json` service file generated when the `backen
 ```json
 {
   "service": {
-    "name": "backend", 
+    "name": "backend",
     "tags": ["us-central1-f"],
-    "port": 8080
+    "port": 8080,
+    "check": {
+      "script": "curl localhost:8080 >/dev/null 2>&1",
+      "interval": "10s"
+    }
   }
 }
 ```
@@ -246,7 +251,11 @@ The service registered with Consul by each HAProxy server is named `haproxy-inte
   "service": {
     "name": "haproxy-internal",
     "tags": ["us-central1-f"],
-    "port": 8080
+    "port": 8080,
+    "check": {
+      "script": "curl localhost:8080 >/dev/null 2>&1",
+      "interval": "10s"
+    }
   }
 }
 ```
@@ -481,12 +490,12 @@ You can use the Cloud Platform Console to delete images. Select the check boxes 
 
   ```shell
   $ gcloud deployment-manager deployments create internal-lb-demo \
-      --config=./compute-internal-loadbalancer/dm/config.yaml
+      --config=$HOME/compute-internal-loadbalancer/dm/config.yaml
   ```
 
 1. As the deployment is processing, visit the [Deployment Manager console page](https://console.developers.google.com/deployments) and track its progress.
 
-1. When the deployment completes, visit the [HTTP load balancer console page](https://console.developers.google.com/networking/loadbalancing/http) and click the IP address in the Incoming Traffic columnt to access a frontend and verify the application is working.
+1. When the deployment completes, visit the [HTTP load balancer console page](https://console.developers.google.com/networking/loadbalancing/http) and click the IP address in the Incoming Traffic columnt to access a frontend and verify the application is working. It may take several minutes after the deployment completes before the load balancer begins servicing requests.
 
 ### Delete the Deployment Manager deployment
 1. `$ gcloud deployment-manager deployments delete internal-lb-demo`
