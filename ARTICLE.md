@@ -72,7 +72,7 @@ To support service registration and discovery, you must run at least one Consul 
 1. Set an environment variable containing your project ID:
 
   ```sh
-  $ export PROJECT_ID=$(curl -H "metadata-flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id)
+  $ export PROJECT_ID=$(curl -H 'metadata-flavor: Google' http://metadata.google.internal/computeMetadata/v1/project/project-id)
   ```
 
 1. `cd` to the directory containing the Consul image files:
