@@ -2,7 +2,7 @@
   "variables": {
     "account_file": "",
     "project_id": "null",
-    "consul_url": "https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip"
+    "consul_url": "https://releases.hashicorp.com/consul/0.6.3/consul_0.6.3_linux_amd64.zip"
   },
   "builders": [
     {

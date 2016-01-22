@@ -2,9 +2,8 @@
   "variables": {
     "account_file": "",
     "project_id": "null",
-    "consul_url": "https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_linux_amd64.zip",
-    "consul_template_url": "https://releases.hashicorp.com/consul-template/0.12.0/consul-template_0.12.0_linux_amd64.zip",
-    "consul_web_ui_url": "https://releases.hashicorp.com/consul/0.6.0/consul_0.6.0_web_ui.zip"
+    "consul_url": "https://releases.hashicorp.com/consul/0.6.3/consul_0.6.3_linux_amd64.zip",
+    "consul_template_url": "https://releases.hashicorp.com/consul-template/0.12.2/consul-template_0.12.2_linux_amd64.zip"
   },
   "builders": [
     {
@@ -72,7 +71,6 @@
             "# Get and install consul, consul-template, and consul web UI",
             "wget -O consul.zip {{user `consul_url`}}",
             "wget -O consul-template.zip {{user `consul_template_url`}}",
-            "wget -O consul-ui.zip {{user `consul_web_ui_url`}}",
             "unzip consul.zip -d /usr/local/bin/",
             "unzip consul-template.zip -d /usr/local/bin/",
             "unzip consul-ui.zip -d /usr/local/lib/consul-ui/",
