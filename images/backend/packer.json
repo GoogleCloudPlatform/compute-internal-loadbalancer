@@ -59,6 +59,7 @@
       "type": "shell",
       "inline": [
             "#! /bin/bash",
+            "apt-get update -y",
             "apt-get install -y unzip",
 
             "# Get and install consul and consul-template",
